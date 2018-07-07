@@ -28,7 +28,7 @@ $cServerHost        = "127.0.0.1" ##portal local
 $cServerPort  = "10500" ##porta de conexao com o appserver que sera usado para compilacao
 $cServerBuild = "7.00.131227A" ##versao da build o binário
 $cUserAdmin = "admin" #usuario para autenticar no protheus
-$cUserPass =  "admff152" ##senha, caso em branco vai pedir toda aplicação de path
+$cUserPass =  "" ##senha, caso em branco vai pedir toda aplicação de path
 $cEnvAplyRPO = "atualizarpo" ##ambiente que será utilziado para aplicar o path
 
 #------------------------------------------------------------------
