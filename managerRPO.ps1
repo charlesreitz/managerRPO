@@ -381,6 +381,15 @@ function StartAutomate{
 }
 
 function defragRPO{
+        Write-Host "Desfragmentando RPO"
+
+        if ($cUserAdmin -eq ""){
+             $cUserAdmin = Read-Host "Informe o usuário do sistema Protheus para aplicação do pacote"
+         }
+
+         if ($cUserPass -eq ""){
+             $cUserPass = Read-Host "Informe a senha do sistema Protheus para aplicação do pacote" 
+         }
 
 	   $cCommandsPathAply = "defragRPO serverType=AdvPL server=$cServerHost build=$cServerBuild port=$cServerPort user=$cUserAdmin psw=$cUserPass environment=$cEnvAplyRPO"
 		Start-Process $cPathTDS113Java -ArgumentList '-jar', $cPathTDS113Plugin' -application br.com.totvs.tds.cli.tdscli -nosplash '$cCommandsPathAply -RedirectStandardError .\console_error.log -Wait 
