@@ -15,20 +15,20 @@ Add-Type -AssemblyName System.Windows.Forms
 #EFETUAR ALTERACAO DAS VARIAVEIS CONFORME NECESSIDAE DO AMBIENTE
 #------------------------------------------------------------------
 
-$cPathProtheus      = "C:\TOTVS12\Microsiga\Protheus"  ##Caminho do Protheus, nÃ£o colocar a ultima barra
+$cPathProtheus      = "E:\TOTVS12\Microsiga\Protheus"  ##Caminho do Protheus, nÃ£o colocar a ultima barra
 $cPathRPO           = "\apo"                            ##Nome da pasta raiz onde fica todos os RPO's
 $cPathAtualizaRPO   = "\atualizarpo"                    ##caminho do RPO que serÃ¡ copiado para a produÃ§Ã£o
 $cPathBinarios      = "\bin"                            ##Caminho dos binÃ¡rios
 $cRPOName           = "tttp120.rpo"                     ##Nome do arquivo RPO
-$aAppservers        = @("appserver_lb1","appserver_lb2","appserver_lb3","appserver_master")    ##Nome das pastas de cada serviÃ§o
+$aAppservers        = @("appserver00","appserver01","appserver02","appserver03","appserver04","appserver05","appserver05","appserver06","appserver07","appserver08","appserverGrid00","appserverGrid01","appserverGrid02","appserverGrid03","appserverGrid04","appserverGrid05","appserverGrid06","appserverGrid07","appserverScheduleJob","appserverWSRest")    ##Nome das pastas de cada serviÃ§o
 #$aAppservers       = @("appserver_slave7 - Copy")  ##Nome das pastas de cada serviÃ§o
 $cEnvironment       = "Environment"                        ##Ambiente que serÃ¡ alterado (destino), appserver.ini e pastas devem ter o mesmo nome
-$cPathTDS113        = "C:\TOTVS12\TotvsDeveloperStudio-11.3" #Caminho do TDS, precisa estar instalado o TDSCLI 
+$cPathTDS113        = "E:\TOTVS12\TotvsDeveloperStudio-11.3" #Caminho do TDS, precisa estar instalado o TDSCLI 
 $cServerHost        = "127.0.0.1" ##portal local 
-$cServerPort  = "1238" ##porta de conexao com o appserver que sera usado para compilacao
+$cServerPort  = "10500" ##porta de conexao com o appserver que sera usado para compilacao
 $cServerBuild = "7.00.131227A" ##versao da build o binário
 $cUserAdmin = "admin" #usuario para autenticar no protheus
-$cUserPass =  "" ##senha, caso em branco vai pedir toda aplicação de path
+$cUserPass =  "uhuuni12" ##senha, caso em branco vai pedir toda aplicação de path
 $cEnvAplyRPO = "atualizarpo" ##ambiente que será utilziado para aplicar o path
 
 #------------------------------------------------------------------
@@ -58,7 +58,7 @@ function ChangeRPOFileInit{
     ##define a pasta do rpo de destino
     $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment
     $cRPODestFile   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cRPOName
-
+	
 
     try {
             ##Verifica se a pasta do RPO de origem existe
@@ -116,6 +116,7 @@ function ChangeRPOFileInit{
                 if (!$lRetFun){
                     throw "Falha ao gerar arquivo de backup .INI no caminho -> $cIniFileBak" 
                 }
+				
                 write-Host "Apontando para o novo RPO o arquivo INI $cIniFile" 
                 Set-OrAddIniValue -FilePath $cIniFile  -keyValueList @{SourcePath = $cRPONewFiler}
             }
@@ -135,7 +136,7 @@ function ChangeRPOFileInit{
         "Troca de RPO Realizada com Sucesso | $Time  | User:$env:USERNAME" | out-file $logfile -append
         $lReturn = $true
     }
-
+	
     return $lReturn
 }       
     
@@ -259,7 +260,7 @@ function AplyPathTDSCli{
              $nCountFor += 1
          }
          
-		 defragRPO #desfragmenta o RPO
+		 
 		 
     } catch {
         
@@ -324,7 +325,15 @@ function Show-Menu
            [string]$Title = 'Escolha a opção desejada'
      )
      cls
-     Write-Host "LOG disponível em -> $logfile"
+     Write-Host ""
+	 Write-Host "1) LOG disponível em -> $logfile"
+	 Write-Host ""
+	 Write-Host "2) Compilar os fontes no RPO -> $cPathAtualizaRPO "
+	 Write-Host ""
+	 Write-Host "3) Antes de compilar, garanta que o RPO do $cPathAtualizaRPO"
+	 Write-Host "   esteja igual ao ambiente de produção "
+	 Write-Host ""
+	 Write-Host ""
      Write-Host "================ $Title ================"
      
      Write-Host "1: Trocar RPO Produção"
@@ -348,6 +357,9 @@ function StartAutomate{
                         $confirmation = Read-Host "Confirma execução troca do RPO? (Y/N)"
                         if ($confirmation -eq 'y' -or $confirmation -eq 'Y' ) {
                             ChangeRPOFileInit
+
+							
+
                         }
                     
                } '2' {
@@ -374,7 +386,7 @@ function StartAutomate{
                     return
                }
          }
-         pause
+         Read-Host -Prompt "### Finalizado! ### --> Aperte enter para continuar <--"
          cls
     }
     until ($input -eq 'q')
