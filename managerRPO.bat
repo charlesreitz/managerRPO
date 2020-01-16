@@ -1,0 +1,1 @@
+powershell -file "C:\TOTVS 12_PROD\Microsiga\Protheus\managerRPO.ps1"
