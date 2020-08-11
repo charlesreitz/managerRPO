@@ -3,16 +3,16 @@ CHARLES REITZ - 25/06/2018
 charles.reitz@totvs.com.br
 Script para automatizar tarefaz para o sistema TOTVS Microsiga Protheus, sendo elas:
 - Troca de RPO a quente informando um RPO de origem
-- AplicaÁ„o de v·rios paths buscando de uma determinada pasta
+- Aplica√ß√£o de v√°rios paths buscando de uma determinada pasta
 
-PS: gentileza n„o remover as credencias de criaÁ„o, seja gentil.
+PS: gentileza n√£o remover as credencias de cria√ß√£o, seja gentil.
 
-##Set-ExecutionPolicy RemoteSigned ##COMANDO PARA HABILITAR A EXECU«√O DE SCRIPTS NO SERVIDOR, PRECISA RODAR COM ADMIN
+##Set-ExecutionPolicy RemoteSigned ##COMANDO PARA HABILITAR A EXECU√á√ÉO DE SCRIPTS NO SERVIDOR, PRECISA RODAR COM ADMIN
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
 
-#FunÁ„o resposnavel por pegar as informaÁıes do arquivo ini
+#Fun√ß√£o resposnavel por pegar as informa√ß√µes do arquivo ini
 function Get-IniContent ($filePath)
 {
     $ini = @{}
@@ -47,27 +47,27 @@ function Get-IniContent ($filePath)
 #EFETUAR ALTERACAO DAS VARIAVEIS CONFORME NECESSIDAE DO AMBIENTE
 #------------------------------------------------------------------
 $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition     ##Busca o local de onde esta sendo executaod o script
-$iniContent = Get-IniContent $scriptPathì\managerRpo.iniî               ##Carrega configuracoes do arquivo ini para atribuir as variaveis
-$cPathProtheus 		= $iniContent["ambiente"][ìPathProtheusî] 	 ##Caminho do Protheus, n√£o colocar a ultima barra
-$cPathRPO 			= $iniContent["ambiente"][ìPathRPOî]         #"\apo"							##Nome da pasta raiz onde fica todos os RPO's
-$cPathAtualizaRPO 	= $iniContent["ambiente"][ìPathAtualizaRPOî] #"\atualizarpo" 					##caminho do RPO que ser√° copiado para a produ√ß√£o
-$cPathBinarios		= $iniContent["ambiente"][ìPathBinariosî]    # "\bin" 							##Caminho dos bin√°rios
-$cRPOName 			= $iniContent["ambiente"][ìRPONameî]         # "tttp120.rpo" 					##Nome do arquivo RPO
-$aAppservers 		= $iniContent["ambiente"][ìAppserversî].Split(',')      #@("appserver","appserver_Portal","appserver_slave1","appserver_slave2","appserver_slave3","appserver_slave4","appserver_slave5","appserver_slave6","appserver_slave7")	##Nome das pastas de cada servi√ßo
-$cEnvironment		= $iniContent["ambiente"][ìEnvironmentî]     #"Producao"						##Ambiente que ser√° alterado (destino), appserver.ini e pastas devem ter o mesmo nome
-$cPathTDS113        = $iniContent["patch"][ìPathTDS113î]         #"C:\TOTVS\TotvsDeveloperStudio-11.3_Totvs" #Caminho do TDS, precisa estar instalado o TDSCLI 
-$cServerHost        = $iniContent["patch"][ìServerHostî]         #"127.0.0.1" ##portal local 
-$cServerPort        = $iniContent["patch"][ìServerPortî]         #"1242" ##porta de conexao com o appserver que sera usado para compilacao
-$cServerBuild       = $iniContent["patch"][ìServerBuildî]        #"7.00.131227A" ##versao da build o bin·rio
-$cUserAdmin         = $iniContent["patch"][ìUserAdminî]          #"admin" #usuario para autenticar no protheus
-$cUserPass          = $iniContent["patch"][ìUserPassî]           # "totvs@2018" ##senha, caso em branco vai pedir toda aplicaÁ„o de path
-$cEnvAplyRPO        = $iniContent["patch"][ìEnvAplyRPOî]         #"atualizarpo" ##ambiente que ser· utilziado para aplicar o path
-
+$iniContent = Get-IniContent $scriptPath‚Äú\managerRpo.ini‚Äù               ##Carrega configuracoes do arquivo ini para atribuir as variaveis
+$cPathProtheus 		= $iniContent["ambiente"][‚ÄúPathProtheus‚Äù] 	 ##Caminho do Protheus, n√É¬£o colocar a ultima barra
+$cPathRPO 			= $iniContent["ambiente"][‚ÄúPathRPO‚Äù]         #"\apo"							##Nome da pasta raiz onde fica todos os RPO's
+$cPathAtualizaRPO 	= $iniContent["ambiente"][‚ÄúPathAtualizaRPO‚Äù] #"\atualizarpo" 					##caminho do RPO que ser√É¬° copiado para a produ√É¬ß√É¬£o
+$cPathBinarios		= $iniContent["ambiente"][‚ÄúPathBinarios‚Äù]    # "\bin" 							##Caminho dos bin√É¬°rios
+$cRPOName 			= $iniContent["ambiente"][‚ÄúRPOName‚Äù]         # "tttp120.rpo" 					##Nome do arquivo RPO
+$aAppservers 		= $iniContent["ambiente"][‚ÄúAppservers‚Äù].Split(',')      #@("appserver","appserver_Portal","appserver_slave1","appserver_slave2","appserver_slave3","appserver_slave4","appserver_slave5","appserver_slave6","appserver_slave7")	##Nome das pastas de cada servi√É¬ßo
+$cEnvironment		= $iniContent["ambiente"][‚ÄúEnvironment‚Äù]     #"Producao"						##Ambiente que ser√É¬° alterado (destino), appserver.ini e pastas devem ter o mesmo nome
+$cPathTDS113        = $iniContent["patch"][‚ÄúPathTDS113‚Äù]         #"C:\TOTVS\TotvsDeveloperStudio-11.3_Totvs" #Caminho do TDS, precisa estar instalado o TDSCLI 
+$cServerHost        = $iniContent["patch"][‚ÄúServerHost‚Äù]         #"127.0.0.1" ##portal local 
+$cServerPort        = $iniContent["patch"][‚ÄúServerPort‚Äù]         #"1242" ##porta de conexao com o appserver que sera usado para compilacao
+$cServerBuild       = $iniContent["patch"][‚ÄúServerBuild‚Äù]        #"7.00.131227A" ##versao da build o bin√°rio
+$cUserAdmin         = $iniContent["patch"][‚ÄúUserAdmin‚Äù]          #"admin" #usuario para autenticar no protheus
+$cUserPass          = $iniContent["patch"][‚ÄúUserPass‚Äù]           # "totvs@2018" ##senha, caso em branco vai pedir toda aplica√ß√£o de path
+$cEnvAplyRPO        = $iniContent["patch"][‚ÄúEnvAplyRPO‚Äù]         #"atualizarpo" ##ambiente que ser√° utilziado para aplicar o path
+$cPathBinarioDefrag	= $iniContent["ambiente"][‚ÄúPathBinarioDefrag‚Äù]			 # "appserverComp"  ## pasta do binario utilizado para o defrag
 
 #------------------------------------------------------------------
 #Variveis raramente alteradas 
-$cAppserverNameFile = "appserver"                       ##Nome do arquivo .ini dos bin√°rios
-$cAppserverIniFile  = $cAppserverNameFile+".ini"        ##Nome do arquivo .ini dos bin√°rios
+$cAppserverNameFile = "appserver"                       ##Nome do arquivo .ini dos bin√É¬°rios
+$cAppserverIniFile  = $cAppserverNameFile+".ini"        ##Nome do arquivo .ini dos bin√É¬°rios
 $cGetPath           = Get-Location
 $logfile            =  "$cGetPath\managerRPO.log"
 #variaveis utilizadas para a compilacao via tdscli
@@ -79,10 +79,12 @@ $cRunCompile = "$cPathTDS113Java -jar $cPathTDS113Plugin -application br.com.tot
 
 
 <#
-Fun√ß√£o resposnavel por trocar copiar de uma pasta para outra, gerar uma nova data
+Fun√É¬ß√É¬£o resposnavel por trocar copiar de uma pasta para outra, gerar uma nova data
 #>
 function ChangeRPOFileInit{
     cls #limpa a tela
+	
+	
     $lReturn = $false
     ##define a variavel do RPO de origem
     $cRPOOrigtPath  = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO
@@ -91,22 +93,37 @@ function ChangeRPOFileInit{
     $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment
     $cRPODestFile   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cRPOName
 	$cRPOOrigFile
+	$cBINARIODefrag  = $cPathProtheus+$cPathBinarios+"\"+$cPathBinarioDefrag+"\appserver.exe"
 
 
     try {
-            
+	
+			# deixa apenas os 3 ultimos dias
+			Write-Host "Limpando BACKUP do RPO"
+			Get-ChildItem -Path "D:\TOTVS12\Microsiga\Protheus\apo\environment" -Directory -recurse | where {$_.LastWriteTime -le $(get-date).Adddays(-3)} | Remove-Item -recurse -force
+	
+	
+            ##Faz o defrag do RPO
+			Write-Host "Desfragmentando RPO"
+			Write-Host $cBINARIODefrag
+			Write-Host $paramsDefrag
+			$paramsDefrag = "-console -compile -defragrpo -env="+$cEnvAplyRPO
+			Start-Process -NoNewWindow -Wait -FilePath $cBINARIODefrag -ArgumentList $paramsDefrag
+
+			
             ##Verifica se a pasta do RPO de origem existe
+			
             $lRetFun = Test-Path $cRPOOrigFile
             #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Arquivo n„o localizado $cRPOOrigFile" 
+                throw "Arquivo n√£o localizado $cRPOOrigFile" 
             }
             
             #Verifica se a pasta do ambiente de destino exist
             $lRetFun = Test-Path $cRPODestPath
             #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Pasta n„o localizada $cRPODestPath" 
+                throw "Pasta n√£o localizada $cRPODestPath" 
             }
             
             ##monta dados da nova pasta
@@ -133,7 +150,7 @@ function ChangeRPOFileInit{
             
             $lRetFun = Test-Path $cRPONewFilerAPO
             if (!$lRetFun){
-                throw "Arquivo n„o copiado, n„o localizada $cRPONewFilerAPO" 
+                throw "Arquivo n√£o copiado, n√£o localizada $cRPONewFilerAPO" 
             }
             
             ##altera os arquivos inis apontando para o novo caminho
@@ -154,13 +171,14 @@ function ChangeRPOFileInit{
                 write-Host "Apontando para o novo RPO o arquivo INI $cIniFile" 
                 Set-OrAddIniValue -FilePath $cIniFile  -keyValueList @{SourcePath = $cRPONewFiler}
             }
+			
             
     } catch {
         
         $ErrorMessage = $_.Exception.Message
         #$FailedItem = $_.Exception.ItemName
         #Send-MailMessage -From ExpensesBot@MyCompany.Com -To WinAdmin@MyCompany.Com -Subject "HR File Read Failed!" -SmtpServer EXCH01.AD.MyCompany.Com -Body "We failed to read file $FailedItem. The error message was $ErrorMessage"
-        #[System.Windows.MessageBox]::Show($ErrorMessage,'AtenÁ„o')
+        #[System.Windows.MessageBox]::Show($ErrorMessage,'Aten√ß√£o')
         Write-Error $ErrorMessage
         Break
     }
@@ -180,7 +198,7 @@ function ChangeRPOFileInit{
     
 <#
 CHARLES REITZ - 25/06/2018
-Fun√ß√£o responsavel por loclaizar e setar os valores no ini
+Fun√É¬ß√É¬£o responsavel por loclaizar e setar os valores no ini
 #>  
 function Set-OrAddIniValue
 {
@@ -227,204 +245,12 @@ Function Get-Folder($initialDirectory)
 
 
 
-<#
-CHARLES REITZ - 25/06/2018
-Efetua a compilacao dos patchs em um determinado ambiente
-#>
-function AplyPathTDSCli{
-    cls #limpa tela
-    $lReturn = $false
-
-    #http://tdn.totvs.com/pages/viewpage.action?pageId=201746065
-    
-     try {
-         if ($cUserAdmin -eq ""){
-             $cUserAdmin = Read-Host "Informe o usu·rio do sistema Protheus para aplicaÁ„o do pacote"
-         }
-
-         if ($cUserPass -eq ""){
-             $cUserPass = Read-Host "Informe a senha do sistema Protheus para aplicaÁ„o do pacote" 
-         }
-         
-         ##caso nao tiver dfinicao de pasta padrao abre tela para selecionar
-         if ($cFilePath -eq ""){
-             $cFilePath = Get-Folder
-         }
-         
-         if ($cFilePath -eq ""){
-            throw "N„o foi informado pasta para buscar dos path" 
-         }
-         
-         #aFilerGet-ChildItem -Path $cFilePath -Filter *TTTP120.PTM -Recurse -ErrorAction SilentlyContinue -Force
-         #locations = Get-ChildItem -Path $cFilePath -Filter *TTTP120.PTM -Recurse -ErrorAction SilentlyContinue -Force | ? {!$_.psiscontainer}
-         $locations = Get-ChildItem -Path $cFilePath -Filter *TTTP120.PTM -Recurse -ErrorAction SilentlyContinue -Force  
-         
-         $totalFilerAnalyse = $locations.Count
-         if ($totalFilerAnalyse -eq 0){
-             throw "N„o foi informado pasta para buscar dos path" 
-         }
-         
-         if ($totalFilerAnalyse -gt 50){
-             throw "Muitos arquivos a serem aplicados. Total: $totalFilerAnalyse" 
-         }
-         
-
-         #$confirmation = Read-Host "Pasta selecionada: $cFilePath | Sistema far· a busca e ir· aplicar todos os paths com a extens„o TTTP.PTM | Total de caminhos a serem analisados $totalFilerAnalyse `n Confirma? (Y/N)"
-         #if ($confirmation -ne 'y' -or $confirmation -ne 'Y' ) {
-         #  throw "Cancelado pelo operador" 
-         #}
-
-         $nCountFor = 1
-         for($i = 0; $i -lt $totalFilerAnalyse; $i++){
-            $cFilePath = $locations[$i].fullname
-            if($cFilePath -ne ""){
-                $cMsgPad = "Aplicando  patch $nCountFor / $totalFilerAnalyse | $cFilePath " 
-                Write-Host  $cMsgPad
-                $cMsgPad >> $logfile
-
-                #$cCommandsPathAply = "patchapply serverType=AdvPL server=$cServerHost build=$cServerBuild port=$cServerPort user=$cUserAdmin psw=$cUserPass environment=$cEnvAplyRPO localPatch=T patchFile=$cFilePath applyOldProgram=F"
-                $cCommandsPathAply = "patchapply serverType=AdvPL server=$cServerHost build=$cServerBuild port=$cServerPort user=$cUserAdmin psw=$cUserPass environment=$cEnvAplyRPO localPatch=T patchFile=$cFilePath applyOldProgram=F"
-                Start-Process $cPathTDS113Java -ArgumentList '-jar', $cPathTDS113Plugin' -application br.com.totvs.tds.cli.tdscli -nosplash '$cCommandsPathAply -RedirectStandardError .\console_error.log -Wait 
-                #-RedirectStandardOutput '.\console_out.log'
-                if (Test-Path .\console_error.log){
-                    $errorlog = Get-Content .\console_error.log
-                    if ($errorlog.Length -ne 0 -and (( %{$errorlog.ToUpper() -match "WARNING:"}) -ne $true) ){
-                        throw "Falha ao aplicar path $errorlog" 
-                    }
-                }
-            }
-             $nCountFor += 1
-         }
-         
-		 
-		 
-    } catch {
-        
-        $ErrorMessage = $_.Exception.Message
-        #$FailedItem = $_.Exception.ItemName
-        #Send-MailMessage -From ExpensesBot@MyCompany.Com -To WinAdmin@MyCompany.Com -Subject "HR File Read Failed!" -SmtpServer EXCH01.AD.MyCompany.Com -Body "We failed to read file $FailedItem. The error message was $ErrorMessage"
-        #[System.Windows.MessageBox]::Show($ErrorMessage,'AtenÁ„o')
-        Write-Error  $ErrorMessage
-        Break
-    }
-    Finally
-    {
-        $Time=Get-Date
-        "$Time  | User:$env:USERNAME | Finalizado aplicaÁ„o de paths  " | out-file $logfile -append
-        $lReturn = $true
-       
-    }
-
-     
-
-    return $lReturn
-}
-
-
-<#
-CHARLES REITZ - 25/06/2018
-Apresentar o menu para o usuario escolher o que deseja fazer
-#>
-function Show-Menu
-{
-     param (
-           [string]$Title = 'Escolha a opÁ„o desejada'
-     )
-     cls
-     Write-Host ""
-	 Write-Host "1) LOG disponÌvel em -> $logfile"
-	 Write-Host ""
-	 Write-Host "2) Compilar os fontes no RPO que est· em  -> $cPathAtualizaRPO "
-	 Write-Host ""
-	 Write-Host "3) Antes de compilar, garanta que o RPO do $cPathAtualizaRPO"
-	 Write-Host "   esteja igual ao ambiente de produÁ„o "
-	 Write-Host ""
-	 Write-Host ""
-     Write-Host "================ $Title ================"
-     
-     Write-Host "1: Trocar RPO ProduÁ„o                                  - Vai pegar o RPO do ambiente atualizar RPO e jogar no ambiente de produÁ„o"
-     Write-Host "2: Aplicar v·rios paths selecionado apenas uma pasta    - Vai aplicar os paths no ambiente AtualizRPO"   
-     Write-Host "3: Aplicar patchs e trocar RPO da produÁ„o              - Vair aplicar os paths no ambiente AtualizaRPO e jogar no ambiente de produÁ„o"
-	 Write-Host "4: Desfragmentar RPO"
-     Write-Host "Q: Precione 'Q' para sair."
-    
-}
-
 <#Controle o menu de atuomacao #>   
 function StartAutomate{
-    do
-    {
-    
-         Show-Menu
-         $input = Read-Host "Selecione a opÁ„o desejada"
-         switch ($input)
-         {
-               '1' {
-                        $confirmation = Read-Host "Confirma execuÁ„o troca do RPO? (Y/N)"
-                        if ($confirmation -eq 'y' -or $confirmation -eq 'Y' ) {
-                            ChangeRPOFileInit
-
-							
-
-                        }
-                    
-               } '2' {
-                    $confirmation = Read-Host "Confirma aplicaÁ„o de path? (Y/N)"
-                    if ($confirmation -eq 'y' -or $confirmation -eq 'Y' ) {
-                         AplyPathTDSCli
-                     }
-                    
-
-               } '3' {
-                     $confirmation = Read-Host "Confirma aplicaÁ„o de path e troca de RPO? (Y/N)"
-                    if ($confirmation -eq 'y' -or $confirmation -eq 'Y' ) {
-                         AplyPathTDSCli
-                         defragRPO
-                         ChangeRPOFileInit
-
-                     }
-				} '4' {
-                     $confirmation = Read-Host "Confirma aplicaÁ„o de path e troca de RPO? (Y/N)"
-                    if ($confirmation -eq 'y' -or $confirmation -eq 'Y' ) {
-                         defragRPO
-                     }
-
-               } 'q' {
-                    return
-               } 'Q' {
-                    return
-               }
-         }
-         Read-Host -Prompt "########      Finalizado!        ######## -->           Aperte enter para continuar             <--"
-         cls
-    }
-    until ($input -eq 'q')
+   
+		ChangeRPOFileInit
 }
 
-function defragRPO{
-        Write-Host "Desfragmentando RPO"
-
-        if ($cUserAdmin -eq ""){
-             $cUserAdmin = Read-Host "Informe o usu·rio do sistema Protheus para aplicaÁ„o do pacote"
-         }
-
-         if ($cUserPass -eq ""){
-             $cUserPass = Read-Host "Informe a senha do sistema Protheus para aplicaÁ„o do pacote" 
-         }
-
-	   $cCommandsPathAply = "defragRPO serverType=AdvPL server=$cServerHost build=$cServerBuild port=$cServerPort user=$cUserAdmin psw=$cUserPass environment=$cEnvAplyRPO"
-		Start-Process $cPathTDS113Java -ArgumentList '-jar', $cPathTDS113Plugin' -application br.com.totvs.tds.cli.tdscli -nosplash '$cCommandsPathAply -RedirectStandardError .\console_error.log -Wait 
-		#-RedirectStandardOutput '.\console_out.log'
-		if (Test-Path .\console_error.log){
-			$errorlog = Get-Content .\console_error.log
-			
-			
-			if ($errorlog.Length -ne 0 -and (( %{$errorlog.ToUpper() -match "WARNING:"}) -ne $true) ){
-				 throw "Falha ao desfragmentar o RPO $errorlog" 
-			}
-		}
-
-}
 			
 StartAutomate
 #AplytPathAndChangeRPO
