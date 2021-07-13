@@ -171,7 +171,18 @@ function ChangeRPOFileInit{
                 write-Host "Apontando para o novo RPO o arquivo INI $cIniFile" 
                 Set-OrAddIniValue -FilePath $cIniFile  -keyValueList @{SourcePath = $cRPONewFiler}
             }
-			
+	    
+	    
+	    ## Deixa sempre as ultimas 20 pastas de backup do rpo
+           # gci $cRPODestPath -Recurse| where{-not $_.PsIsContainer}| sort CreationTime -desc| select -Skip 20| Remove-Item -Force
+           Write-Host $cRPODestPath
+	   #$files = Get-ChildItem -Path $cRPODestPath -Recurse | Where-Object {-not $_.PsIsContainer}
+            $files = Get-ChildItem -Path $cRPODestPath 
+            $keep = 20
+            if ($files.Count -gt $keep) { 
+                $files | Sort-Object CreationTime | Select-Object -First ($files.Count - $keep) | Remove-Item -Force -Recurse
+            }
+	    
             
     } catch {
         
