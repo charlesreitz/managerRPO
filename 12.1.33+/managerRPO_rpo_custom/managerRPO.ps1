@@ -3,15 +3,15 @@ CHARLES REITZ - 25/06/2018
 charles.reitz@totvs.com.br
 Script para automatizar tarefaz para o sistema TOTVS Microsiga Protheus, sendo elas:
 - Troca de RPO a quente informando um RPO de origem
-- Aplicação de vários paths buscando de uma determinada pasta
+- AplicaÃ§Ã£o de vÃ¡rios paths buscando de uma determinada pasta
 
-PS: gentileza não remover as credencias de criação, seja gentil.
+PS: gentileza nÃ£o remover as credencias de criaÃ§Ã£o, seja gentil.
 
-##Set-ExecutionPolicy RemoteSigned ##COMANDO PARA HABILITAR A EXECUÇÃO DE SCRIPTS NO SERVIDOR, PRECISA RODAR COM ADMIN
+##Set-ExecutionPolicy RemoteSigned ##COMANDO PARA HABILITAR A EXECUÃ‡ÃƒO DE SCRIPTS NO SERVIDOR, PRECISA RODAR COM ADMIN
 #>
 Add-Type -AssemblyName System.Windows.Forms
 
-#Função resposnavel por pegar as informações do arquivo ini
+#FunÃ§Ã£o resposnavel por pegar as informaÃ§Ãµes do arquivo ini
 function Get-IniContent ($filePath)
 {
     $ini = @{}
@@ -47,26 +47,26 @@ function Get-IniContent ($filePath)
 #------------------------------------------------------------------
 $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition     ##Busca o local de onde esta sendo executaod o script
 $iniContent = Get-IniContent $scriptPath"\managerRpo.ini"               ##Carrega configuracoes do arquivo ini para atribuir as variaveis
-$cPathProtheus 		= $iniContent["ambiente"]["PathProtheus"] 	 ##Caminho do Protheus, nÃ£o colocar a ultima barra
+$cPathProtheus 		= $iniContent["ambiente"]["PathProtheus"] 	 ##Caminho do Protheus, nÃƒÂ£o colocar a ultima barra
 $cPathRPO 			= $iniContent["ambiente"]["PathRPO"]         #"\apo"							##Nome da pasta raiz onde fica todos os RPO's
-$cPathAtualizaRPO 	= $iniContent["ambiente"]["PathAtualizaRPO"] #"\atualizarpo" 					##caminho do RPO que serÃ¡ copiado para a produÃ§Ã£o
-$cPathBinarios		= $iniContent["ambiente"]["PathBinarios"]    # "\bin" 							##Caminho dos binÃ¡rios
+$cPathAtualizaRPO 	= $iniContent["ambiente"]["PathAtualizaRPO"] #"\atualizarpo" 					##caminho do RPO que serÃƒÂ¡ copiado para a produÃƒÂ§ÃƒÂ£o
+$cPathBinarios		= $iniContent["ambiente"]["PathBinarios"]    # "\bin" 							##Caminho dos binÃƒÂ¡rios
 $cRPOName 			= $iniContent["ambiente"]["RPOName"]         # "tttp120.rpo" 					##Nome do arquivo RPO
-$aAppservers 		= $iniContent["ambiente"]["Appservers"].Split(',')      #@("appserver","appserver_Portal","appserver_slave1","appserver_slave2","appserver_slave3","appserver_slave4","appserver_slave5","appserver_slave6","appserver_slave7")	##Nome das pastas de cada serviÃ§o
-$cEnvironment		= $iniContent["ambiente"]["Environment"]     #"Producao"						##Ambiente que serÃ¡ alterado (destino), appserver.ini e pastas devem ter o mesmo nome
+$aAppservers 		= $iniContent["ambiente"]["Appservers"].Split(',')      #@("appserver","appserver_Portal","appserver_slave1","appserver_slave2","appserver_slave3","appserver_slave4","appserver_slave5","appserver_slave6","appserver_slave7")	##Nome das pastas de cada serviÃƒÂ§o
+$cEnvironment		= $iniContent["ambiente"]["Environment"]     #"Producao"						##Ambiente que serÃƒÂ¡ alterado (destino), appserver.ini e pastas devem ter o mesmo nome
 $cPathTDS113        = $iniContent["patch"]["PathTDS113"]         #"C:\TOTVS\TotvsDeveloperStudio-11.3_Totvs" #Caminho do TDS, precisa estar instalado o TDSCLI 
 $cServerHost        = $iniContent["patch"]["ServerHost"]         #"127.0.0.1" ##portal local 
 $cServerPort        = $iniContent["patch"]["ServerPort"]         #"1242" ##porta de conexao com o appserver que sera usado para compilacao
-$cServerBuild       = $iniContent["patch"]["ServerBuild"]        #"7.00.131227A" ##versao da build o binário
+$cServerBuild       = $iniContent["patch"]["ServerBuild"]        #"7.00.131227A" ##versao da build o binÃ¡rio
 $cUserAdmin         = $iniContent["patch"]["UserAdmin"]          #"admin" #usuario para autenticar no protheus
-$cUserPass          = $iniContent["patch"]["UserPass"]           # "totvs@2018" ##senha, caso em branco vai pedir toda aplicação de path
-$cEnvAplyRPO        = $iniContent["patch"]["EnvAplyRPO"]         #"atualizarpo" ##ambiente que será utilziado para aplicar o path
+$cUserPass          = $iniContent["patch"]["UserPass"]           # "totvs@2018" ##senha, caso em branco vai pedir toda aplicaÃ§Ã£o de path
+$cEnvAplyRPO        = $iniContent["patch"]["EnvAplyRPO"]         #"atualizarpo" ##ambiente que serÃ¡ utilziado para aplicar o path
 $cPathBinarioDefrag	= $iniContent["ambiente"]["PathBinarioDefrag"]			 # "appserverComp"  ## pasta do binario utilizado para o defrag
 
 #------------------------------------------------------------------
 #Variveis raramente alteradas 
-$cAppserverNameFile = "appserver"                       ##Nome do arquivo .ini dos binÃ¡rios
-$cAppserverIniFile  = $cAppserverNameFile+".ini"        ##Nome do arquivo .ini dos binÃ¡rios
+$cAppserverNameFile = "appserver"                       ##Nome do arquivo .ini dos binÃƒÂ¡rios
+$cAppserverIniFile  = $cAppserverNameFile+".ini"        ##Nome do arquivo .ini dos binÃƒÂ¡rios
 $cGetPath           = Get-Location
 $logfile            =  "$cGetPath\managerRPO.log"
 #variaveis utilizadas para a compilacao via tdscli
@@ -78,7 +78,7 @@ $cRunCompile = "$cPathTDS113Java -jar $cPathTDS113Plugin -application br.com.tot
 
 
 <#
-FunÃ§Ã£o resposnavel por trocar copiar de uma pasta para outra, gerar uma nova data
+FunÃƒÂ§ÃƒÂ£o resposnavel por trocar copiar de uma pasta para outra, gerar uma nova data
 #>
 function ChangeRPOFileInit{
     cls #limpa a tela
@@ -115,14 +115,14 @@ function ChangeRPOFileInit{
             $lRetFun = Test-Path $cRPOOrigFile
             #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Arquivo não localizado $cRPOOrigFile" 
+                throw "Arquivo nÃ£o localizado $cRPOOrigFile" 
             }
             
             #Verifica se a pasta do ambiente de destino exist
             $lRetFun = Test-Path $cRPODestPath
             #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Pasta não localizada $cRPODestPath" 
+                throw "Pasta nÃ£o localizada $cRPODestPath" 
             }
             
             ##monta dados da nova pasta
@@ -151,7 +151,7 @@ function ChangeRPOFileInit{
             
             $lRetFun = Test-Path $cRPONewFilerAPO
             if (!$lRetFun){
-                throw "Arquivo não copiado, não localizada $cRPONewFilerAPO" 
+                throw "Arquivo nÃ£o copiado, nÃ£o localizada $cRPONewFilerAPO" 
             }
             
             ##altera os arquivos inis apontando para o novo caminho
@@ -190,7 +190,7 @@ function ChangeRPOFileInit{
         $ErrorMessage = $_.Exception.Message
         #$FailedItem = $_.Exception.ItemName
         #Send-MailMessage -From ExpensesBot@MyCompany.Com -To WinAdmin@MyCompany.Com -Subject "HR File Read Failed!" -SmtpServer EXCH01.AD.MyCompany.Com -Body "We failed to read file $FailedItem. The error message was $ErrorMessage"
-        #[System.Windows.MessageBox]::Show($ErrorMessage,'Atenção')
+        #[System.Windows.MessageBox]::Show($ErrorMessage,'AtenÃ§Ã£o')
         Write-Error $ErrorMessage
         Break
     }
@@ -210,7 +210,7 @@ function ChangeRPOFileInit{
     
 <#
 CHARLES REITZ - 25/06/2018
-FunÃ§Ã£o responsavel por loclaizar e setar os valores no ini
+FunÃƒÂ§ÃƒÂ£o responsavel por loclaizar e setar os valores no ini
 #>  
 function Set-OrAddIniValue
 {
