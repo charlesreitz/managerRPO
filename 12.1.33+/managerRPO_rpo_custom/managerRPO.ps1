@@ -100,19 +100,6 @@ function ChangeRPOFileInit{
  
     try {
 	
-    			# deixa apenas os 3 ultimos dias
-			#Write-Host "Limpando BACKUP do RPO"
-			#Get-ChildItem -Path "D:\TOTVS12\Microsiga\Protheus\apo\environment" -Directory -recurse | where {$_.LastWriteTime -le $(get-date).Adddays(-3)} | Remove-Item -recurse -force
-	
-	
-            ##Faz o defrag do RPO
-			Write-Host "Desfragmentando RPO"
-			Write-Host $cBINARIODefrag
-			Write-Host $paramsDefrag
-			$paramsDefrag = "-console -compile -defragrpo -env="+$cEnvAplyRPO
-			Start-Process -NoNewWindow -Wait -FilePath $cBINARIODefrag -ArgumentList $paramsDefrag
-
-
             ##Verifica se a pasta do RPO de origem existe
 			
             $lRetFun = Test-Path $cRPOOrigFile
