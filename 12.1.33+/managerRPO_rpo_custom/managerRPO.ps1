@@ -48,6 +48,8 @@ function Get-IniContent ($filePath)
 $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition     ##Busca o local de onde esta sendo executaod o script
 $iniContent = Get-IniContent $scriptPath"\managerRpo.ini"               ##Carrega configuracoes do arquivo ini para atribuir as variaveis
 $cPathProtheus 		= $iniContent["ambiente"]["PathProtheus"] 	 ##Caminho do Protheus, nÃƒÂ£o colocar a ultima barra
+$cPathProtheusRemoto 		= $iniContent["ambiente"]["PathProtheusRemoto"] 	 ##Caminho do Protheus, de um servidor remoto
+
 $cPathRPO 			= $iniContent["ambiente"]["PathRPO"]         #"\apo"							##Nome da pasta raiz onde fica todos os RPO's
 $cPathAtualizaRPO 	= $iniContent["ambiente"]["PathAtualizaRPO"] #"\atualizarpo" 					##caminho do RPO que serÃƒÂ¡ copiado para a produÃƒÂ§ÃƒÂ£o
 $cPathBinarios		= $iniContent["ambiente"]["PathBinarios"]    # "\bin" 							##Caminho dos binÃƒÂ¡rios
@@ -90,14 +92,15 @@ function ChangeRPOFileInit{
     $cRPOOrigFile   = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO+"\"+$cRPOName
     ##define a pasta do rpo de destino
     $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\custom"
+    $cRPODestPathRemoto   = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\custom"
+    
     $cRPODestFile   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cRPOName
-	$cRPOOrigFile
 	$cBINARIODefrag  = $cPathProtheus+$cPathBinarios+"\"+$cPathBinarioDefrag+"\appserver.exe"
 
-
+ 
     try {
 	
-			# deixa apenas os 3 ultimos dias
+    			# deixa apenas os 3 ultimos dias
 			#Write-Host "Limpando BACKUP do RPO"
 			#Get-ChildItem -Path "D:\TOTVS12\Microsiga\Protheus\apo\environment" -Directory -recurse | where {$_.LastWriteTime -le $(get-date).Adddays(-3)} | Remove-Item -recurse -force
 	
@@ -109,33 +112,38 @@ function ChangeRPOFileInit{
 			$paramsDefrag = "-console -compile -defragrpo -env="+$cEnvAplyRPO
 			Start-Process -NoNewWindow -Wait -FilePath $cBINARIODefrag -ArgumentList $paramsDefrag
 
-			
+
             ##Verifica se a pasta do RPO de origem existe
 			
             $lRetFun = Test-Path $cRPOOrigFile
             #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Arquivo nÃ£o localizado $cRPOOrigFile" 
+                throw "Arquivo de origem nao  localizado $cRPOOrigFile" 
             }
             
             #Verifica se a pasta do ambiente de destino exist
             $lRetFun = Test-Path $cRPODestPath
-            #Write-Host $lRetFun
             if (!$lRetFun){
-                throw "Pasta nÃ£o localizada $cRPODestPath" 
+                throw "Pasta destino nao localizada $cRPODestPath" 
             }
-            
+
+    
+             #Verifica se a pasta do ambiente de destino exist
+            if (Test-Path $cRPODestPathRemoto) {
+               #Write-Host $lRetFun
+                if (!$lRetFun){
+                    throw "Pasta remota configurada nao localizada $cRPODestPathRemoto" 
+                }
+            }
+
+         
             ##monta dados da nova pasta
             $cRPONewFolder = Get-Date -UFormat "%Y%m%d_%H%M%S"  #(Get-Date).toString("yyyymd_hhmmss")
             $cRPONewFiler   = $cRPODestPath+"\"+$cRPONewFolder
 			$cRPONewFilerCustom   = $cRPODestPath+"\"+$cRPONewFolder+"\"+$cRPOName
-
             $cRPONewFilerAPO    = $cRPODestPath+"\"+$cRPONewFolder+"\"+$cRPOName
+           
             
-            
-            # New-Item -ItemType directory -Path $cRPONewFiler -Force
-            # Copy-item $cRPOOrigFile $cRPODestPath -Recurse -Force
-            #Copy-Item $cRPOOrigFile -Destination $cRPONewFiler -Recurse -Force
             
             ##parametros usados par ao robocopy
             $source      = $cRPOOrigtPath
@@ -174,15 +182,54 @@ function ChangeRPOFileInit{
             }
 	    
 	    
-	    ## Deixa sempre as ultimas 20 pastas de backup do rpo
-           # gci $cRPODestPath -Recurse| where{-not $_.PsIsContainer}| sort CreationTime -desc| select -Skip 20| Remove-Item -Force
-           Write-Host $cRPODestPath
-	   #$files = Get-ChildItem -Path $cRPODestPath -Recurse | Where-Object {-not $_.PsIsContainer}
-            $files = Get-ChildItem -Path $cRPODestPath 
-            $keep = 20
-            if ($files.Count -gt $keep) { 
-                $files | Sort-Object CreationTime | Select-Object -First ($files.Count - $keep) | Remove-Item -Force -Recurse
+
+            ### TROCA PASTAS NO SERVIDOR REMOTO VIA CAMINHO DE REDE
+            if (Test-Path $cRPODestPathRemoto) {           
+                $cRPONewFilerRemoto   = $cRPODestPathRemoto+"\"+$cRPONewFolder
+			    $cRPONewFilerCustomRemoto   = $cRPODestPathRemoto+"\"+$cRPONewFolder+"\"+$cRPOName
+                $cRPONewFilerAPORemoto    = $cRPODestPathRemoto+"\"+$cRPONewFolder+"\"+$cRPOName
+            
+
+                ##parametros usados par ao robocopy
+                $source      = $cRPOOrigtPath
+                $dest        = $cRPONewFilerRemoto
+                $what        = @("") 
+                $options     = @("$cRPOName","/R:1","/W:1","/S") 
+                $cmdArgs     = @("$source","$dest",$what,$options)  
+                robocopy @cmdArgs 
+            
+            
+                $lRetFun = Test-Path $cRPONewFilerRemoto
+                if (!$lRetFun){
+                    throw "Arquivo nÃ£o copiado, nÃ£o localizada $cRPONewFilerAPO" 
+                }
+            
+                ##altera os arquivos inis apontando para o novo caminho
+                For ($i=0; $i -lt $aAppservers.Length; $i++) {
+                    ##monta variavel com o arquivo inicial
+            
+                
+
+                    $cIniFile       = $cPathProtheusRemoto+$cPathBinarios+"\"+$aAppservers[$i]+"\"+$cAppserverIniFile
+                    $cIniFileBak    = $cPathProtheusRemoto+$cPathBinarios+"\"+$aAppservers[$i]+"\"+$cAppserverNameFile+"_"+$cRPONewFolder+".bak"
+                    
+                    $lRetFunRem = Test-Path $cIniFile
+                    if ($lRetFunRem){
+                        write-Host "Gerando backup do arquivo INI -> $cIniFileBak"
+                        Copy-Item $cIniFile $cIniFileBak
+                
+                        #Verifica se o arquivo de backup do appserver foi copiado 
+                        $lRetFun = Test-Path $cIniFileBak
+                        if (!$lRetFun){
+                            throw "Falha ao gerar arquivo de backup .INI no caminho -> $cIniFileBak" 
+                        }
+				
+                        write-Host "Apontando para o novo RPO o arquivo INI $cIniFile" 
+                        Set-OrAddIniValue -FilePath $cIniFile  -keyValueList @{RPOCustom = $cRPONewFilerCustomRemoto}
+                    }
+                }
             }
+
 	    
             
     } catch {
