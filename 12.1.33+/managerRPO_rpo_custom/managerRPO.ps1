@@ -64,6 +64,8 @@ $cUserAdmin         = $iniContent["patch"]["UserAdmin"]          #"admin" #usuar
 $cUserPass          = $iniContent["patch"]["UserPass"]           # "totvs@2018" ##senha, caso em branco vai pedir toda aplicaÃ§Ã£o de path
 $cEnvAplyRPO        = $iniContent["patch"]["EnvAplyRPO"]         #"atualizarpo" ##ambiente que serÃ¡ utilziado para aplicar o path
 $cPathBinarioDefrag	= $iniContent["ambiente"]["PathBinarioDefrag"]			 # "appserverComp"  ## pasta do binario utilizado para o defrag
+$cPathRPOCustom	= $iniContent["ambiente"]["PathRPOCustom"]			 # Define a pasta do rpo customizado
+
 
 #------------------------------------------------------------------
 #Variveis raramente alteradas 
@@ -91,8 +93,8 @@ function ChangeRPOFileInit{
     $cRPOOrigtPath  = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO
     $cRPOOrigFile   = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO+"\"+$cRPOName
     ##define a pasta do rpo de destino
-    $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\custom"
-    $cRPODestPathRemoto   = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\custom"
+    $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cPathRPOCustom
+    $cRPODestPathRemoto   = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\"+$cPathRPOCustom
     
     $cRPODestFile   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cRPOName
 	$cBINARIODefrag  = $cPathProtheus+$cPathBinarios+"\"+$cPathBinarioDefrag+"\appserver.exe"

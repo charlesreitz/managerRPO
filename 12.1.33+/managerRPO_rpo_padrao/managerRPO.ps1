@@ -64,7 +64,7 @@ $cUserPass          = $iniContent["patch"]["UserPass"]           # "totvs@2018" 
 $cEnvAplyRPO        = $iniContent["patch"]["EnvAplyRPO"]         #"atualizarpo" ##ambiente que será utilziado para aplicar o path
 $cPathBinarioDefrag	= $iniContent["ambiente"]["PathBinarioDefrag"]			 # "appserverComp"  ## pasta do binario utilizado para o defrag
 $cPathProtheusRemoto 		= $iniContent["ambiente"]["PathProtheusRemoto"] 	 ##Caminho do Protheus, de um servidor remoto
-
+$cPathRPODefault = $iniContent["ambiente"]["PathRPODefault"] # Define a pasta do rpo padrao
 #------------------------------------------------------------------
 #Variveis raramente alteradas 
 $cAppserverNameFile = "appserver"                       ##Nome do arquivo .ini dos binÃ¡rios
@@ -91,11 +91,11 @@ function ChangeRPOFileInit{
     $cRPOOrigtPath  = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO
     $cRPOOrigFile   = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO+"\"+$cRPOName
     ##define a pasta do rpo de destino
-    $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\padrao"
+    $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cPathRPODefault
     $cRPODestFile   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cRPOName
 	$cRPOOrigFile
 	$cBINARIODefrag  = $cPathProtheus+$cPathBinarios+"\"+$cPathBinarioDefrag+"\appserver.exe"
-    $cRPODestPathRemoto   = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\padrao"
+    $cRPODestPathRemoto   = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\"+$cPathRPODefault
     
 
     try {
