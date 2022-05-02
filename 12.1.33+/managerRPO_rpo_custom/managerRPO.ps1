@@ -247,6 +247,10 @@ function ChangeRPOFileInit{
 <#
 CHARLES REITZ - 25/06/2018
 FunÃƒÂ§ÃƒÂ£o responsavel por loclaizar e setar os valores no ini
+#>     
+<#
+CHARLES REITZ - 25/06/2018
+FunÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o responsavel por loclaizar e setar os valores no ini
 #>  
 function Set-OrAddIniValue
 {
@@ -255,22 +259,31 @@ function Set-OrAddIniValue
         [hashtable]$keyValueList
     )
 
-    $content = Get-Content $FilePath
+    For ($i=0; $i -le 10; $i++) {
+        Write-Host "Buscando dados do arquivo $FilePath - Tentativa $i"
+        $content = Get-Content $FilePath
+    
+        if ($content) {
+            $keyValueList.GetEnumerator() | ForEach-Object {
+                if ($content -match "^$($_.Key)=")
+                {
+                    $content= $content -replace "^$($_.Key)=(.*)", "$($_.Key)=$($_.Value)"
+                }
+                else
+                {
+                    $content += "$($_.Key)=$($_.Value)"
+                }
+            }
 
-    $keyValueList.GetEnumerator() | ForEach-Object {
-        if ($content -match "^$($_.Key)=")
-        {
-            $content= $content -replace "^$($_.Key)=(.*)", "$($_.Key)=$($_.Value)"
-        }
-        else
-        {
-            $content += "$($_.Key)=$($_.Value)"
-        }
+            #$content | Set-Content $FilePath
+            break
+        } 
+        Start-Sleep -s 4
+    
     }
 
-    $content | Set-Content $FilePath
-}
 
+}
 
 <#
 CHARLES REITZ - 25/06/2018
