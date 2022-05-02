@@ -251,7 +251,7 @@ FunÃƒÂ§ÃƒÂ£o responsavel por loclaizar e setar os valores no ini
 <#
 CHARLES REITZ - 25/06/2018
 FunÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o responsavel por loclaizar e setar os valores no ini
-#>  
+#>   
 function Set-OrAddIniValue
 {
     Param(
@@ -260,7 +260,6 @@ function Set-OrAddIniValue
     )
 
     For ($i=0; $i -le 10; $i++) {
-        Write-Host "Buscando dados do arquivo $FilePath - Tentativa $i"
         $content = Get-Content $FilePath
     
         if ($content) {
@@ -279,6 +278,8 @@ function Set-OrAddIniValue
             break
         } 
         Start-Sleep -s 4
+        
+        Write-Host "Buscando dados do arquivo $FilePath - Tentativa $i"
     
     }
 
