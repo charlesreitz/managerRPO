@@ -277,7 +277,7 @@ function Set-OrAddIniValue
                 }
             }
 
-            #$content | Set-Content $FilePath
+            $content | Set-Content $FilePath
             break
         } 
         Start-Sleep -s 4
