@@ -5,3 +5,4 @@ Com esse script você poderá:
 - Fazer troca quente, ou seja, aplicar em um ambiente COMPILAÇÃO e disponbilizar na produção, com isso seus usuários não precisam sair do sistema;
 - Aplicar Path e fazer a troca do RPO, também possibilidade trocar o RPO de um servidor que estiver na rede. 
 
+#totvs #protheus #microsiga #erp #infraestrutura #windows
