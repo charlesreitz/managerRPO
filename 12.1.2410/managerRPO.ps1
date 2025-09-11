@@ -15,6 +15,8 @@ Param(
     [string]$RpoType
 )
 
+$ErrorActionPreference = 'Stop' 
+
 Add-Type -AssemblyName System.Windows.Forms
 
 #Função responsável por pegar as informações do arquivo ini
@@ -224,4 +226,10 @@ function Set-OrAddIniValue {
 }
 
 # --- Ponto de Entrada do Script ---
-ChangeRPOFile
+
+$success = ChangeRPOFile
+if ($success) {
+    exit 0 # Sucesso
+} else {
+    exit 1 # Falha
+}
