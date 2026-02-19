@@ -62,8 +62,10 @@ $cPathRPO               = $iniContent["ambiente"]["PathRPO"]
 $cPathAtualizaRPO       = $iniContent["ambiente"]["PathAtualizaRPO"]
 $cPathBinarios          = $iniContent["ambiente"]["PathBinarios"]
 $cRPOName               = $iniContent["ambiente"]["RPOName"]
+$cRPONameCustom         = $iniContent["ambiente"]["RPONameCustom"]
 $aAppservers            = $iniContent["ambiente"]["Appservers"].Split(',')
-$cEnvironment           = $iniContent["ambiente"]["Environment"]
+$aEnvironments          = $iniContent["ambiente"]["Environment"].Split(',')
+$cEnvironment           = ($aEnvironments[0]).Trim()
 $cPathRPODefault        = $iniContent["ambiente"]["PathRPODefault"]
 $cPathRPOCustom         = $iniContent["ambiente"]["PathRPOCustom"]
 
@@ -90,10 +92,14 @@ function ChangeRPOFile {
     # Define variáveis com base no tipo de RPO (Default ou Custom)
     $cTargetSubFolder = ""
     $cIniKeyToUpdate = ""
+    $effectiveRpoName = $cRPOName # Default
     
     if ($RpoType -eq 'custom') {
         $cTargetSubFolder = $cPathRPOCustom
         $cIniKeyToUpdate = "RPOCustom"
+        if (-not [string]::IsNullOrEmpty($cRPONameCustom)) {
+            $effectiveRpoName = $cRPONameCustom
+        }
     }
     else { # default
         $cTargetSubFolder = $cPathRPODefault
@@ -102,7 +108,7 @@ function ChangeRPOFile {
 
     # Define caminhos de origem e destino
     $cRPOOrigtPath  = $cPathProtheus+$cPathRPO+$cPathAtualizaRPO
-    $cRPOOrigFile   = $cRPOOrigtPath+"\"+$cRPOName
+    $cRPOOrigFile   = $cRPOOrigtPath+"\"+$effectiveRpoName
     $cRPODestPath   = $cPathProtheus+$cPathRPO+"\"+$cEnvironment+"\"+$cTargetSubFolder
     $cRPODestPathRemoto = $cPathProtheusRemoto+$cPathRPO+"\"+$cEnvironment+"\"+$cTargetSubFolder
 
@@ -124,10 +130,10 @@ function ChangeRPOFile {
         
         # Copia os arquivos para o servidor local
         Write-Host "Copiando RPO de '$cRPOOrigtPath' para '$cNewBackupFolderLocal'"
-        $cmdArgs = @("$cRPOOrigtPath", "$cNewBackupFolderLocal", "$cRPOName", "/R:1", "/W:1", "/S")  
+        $cmdArgs = @("$cRPOOrigtPath", "$cNewBackupFolderLocal", "$effectiveRpoName", "/R:1", "/W:1", "/S")  
         robocopy @cmdArgs | Out-Null
         
-        $cCopiedRpoFileLocal = $cNewBackupFolderLocal + "\" + $cRPOName
+        $cCopiedRpoFileLocal = $cNewBackupFolderLocal + "\" + $effectiveRpoName
         if (-not (Test-Path $cCopiedRpoFileLocal)) {
             throw "Falha ao copiar RPO para o destino local: $cCopiedRpoFileLocal" 
         }
@@ -136,6 +142,7 @@ function ChangeRPOFile {
         $cIniValueLocal = if ($RpoType -eq 'custom') { $cCopiedRpoFileLocal } else { $cNewBackupFolderLocal }
 
         # Atualiza os arquivos .ini dos appservers locais
+        $keyValueList = @{ $cIniKeyToUpdate = $cIniValueLocal }
         foreach ($appserver in $aAppservers) {
             $cIniFile = "$cPathProtheus$cPathBinarios\$appserver\$cAppserverIniFile"
             if (Test-Path $cIniFile) {
@@ -144,8 +151,11 @@ function ChangeRPOFile {
                 Copy-Item $cIniFile $cIniFileBak -Force
                 if (-not (Test-Path $cIniFileBak)) { throw "Falha ao gerar backup do .INI local: $cIniFileBak" }
                 
-                $keyValueList = @{ $cIniKeyToUpdate = $cIniValueLocal }
-                Set-OrAddIniValue -FilePath $cIniFile -keyValueList $keyValueList
+                foreach ($env in $aEnvironments) {
+                    $trimmedEnv = $env.Trim()
+                    Write-Host "  -> Modificando seção [$trimmedEnv]"
+                    Set-OrAddIniValue -FilePath $cIniFile -Section $trimmedEnv -keyValueList $keyValueList
+                }
             }
         }
 
@@ -153,16 +163,17 @@ function ChangeRPOFile {
         if ($cPathProtheusRemoto) {
             $cNewBackupFolderRemoto = $cRPODestPathRemoto + "\" + $cRPONewFolderTimestamp
             Write-Host "Copiando RPO de '$cRPOOrigtPath' para o servidor remoto '$cNewBackupFolderRemoto'"
-            $cmdArgsRemoto = @("$cRPOOrigtPath", "$cNewBackupFolderRemoto", "$cRPOName", "/R:1", "/W:1", "/S")  
+            $cmdArgsRemoto = @("$cRPOOrigtPath", "$cNewBackupFolderRemoto", "$effectiveRpoName", "/R:1", "/W:1", "/S")  
             robocopy @cmdArgsRemoto | Out-Null
 
-            $cCopiedRpoFileRemoto = $cNewBackupFolderRemoto + "\" + $cRPOName
+            $cCopiedRpoFileRemoto = $cNewBackupFolderRemoto + "\" + $effectiveRpoName
             if (-not (Test-Path $cCopiedRpoFileRemoto)) {
                 throw "Falha ao copiar RPO para o destino remoto: $cCopiedRpoFileRemoto" 
             }
             
             $cIniValueRemoto = if ($RpoType -eq 'custom') { $cCopiedRpoFileRemoto } else { $cNewBackupFolderRemoto }
 
+            $keyValueListRemoto = @{ $cIniKeyToUpdate = $cIniValueRemoto }
             foreach ($appserver in $aAppservers) {
                 $cIniFileRemoto = "$cPathProtheusRemoto$cPathBinarios\$appserver\$cAppserverIniFile"
                 if (Test-Path $cIniFileRemoto) {
@@ -171,8 +182,11 @@ function ChangeRPOFile {
                     Copy-Item $cIniFileRemoto $cIniFileBakRemoto -Force
                     if (-not (Test-Path $cIniFileBakRemoto)) { throw "Falha ao gerar backup do .INI remoto: $cIniFileBakRemoto" }
                     
-                    $keyValueListRemoto = @{ $cIniKeyToUpdate = $cIniValueRemoto }
-                    Set-OrAddIniValue -FilePath $cIniFileRemoto -keyValueList $keyValueListRemoto
+                    foreach ($env in $aEnvironments) {
+                        $trimmedEnv = $env.Trim()
+                        Write-Host "  -> Modificando seção [$trimmedEnv]"
+                        Set-OrAddIniValue -FilePath $cIniFileRemoto -Section $trimmedEnv -keyValueList $keyValueListRemoto
+                    }
                 }
             }
         }
@@ -193,36 +207,84 @@ function ChangeRPOFile {
 }
 
 <#
-Função responsável por localizar e setar os valores no ini
+Função responsável por localizar e setar os valores no ini, dentro de uma seção específica.
 #> 
 function Set-OrAddIniValue {
     Param(
         [string]$FilePath,
+        [string]$Section,
         [hashtable]$keyValueList
     )
 
     For ($i=0; $i -le 10; $i++) {
         try {
             $content = Get-Content $FilePath -ErrorAction Stop
-        
-            $keyValueList.GetEnumerator() | ForEach-Object {
-                if ($content -match "^$($_.Key)=") {
-                    $content = $content -replace "^$($_.Key)=(.*)", "$($_.Key)=$($_.Value)"
-                }
-                else {
-                    $content += "$($_.Key)=$($_.Value)"
+            
+            # Adicionado para tratar leitura de arquivo em branco ou falha silenciosa
+            if (($null -eq $content) -and ((Get-Item $FilePath).Length -gt 0)) {
+                throw "Falha ao ler o conteúdo do arquivo (retornou vazio, mas o arquivo não está vazio): $FilePath"
+            }
+
+            $newContent = New-Object 'System.Collections.Generic.List[string]'
+            $content | ForEach-Object { $newContent.Add($_) }
+
+            $sectionLineIndex = -1
+            for ($j = 0; $j -lt $newContent.Count; $j++) {
+                if ($newContent[$j].Trim() -eq "[$Section]") {
+                    $sectionLineIndex = $j
+                    break
                 }
             }
 
-            $content | Set-Content $FilePath -Force
+            if ($sectionLineIndex -eq -1) {
+                # Section doesn't exist, add it to the end of the file.
+                if (($newContent.Count -gt 0) -and ($newContent[$newContent.Count - 1].Trim() -ne "")) {
+                    $newContent.Add("") # Add a blank line for separation
+                }
+                $newContent.Add("[$Section]")
+                $sectionLineIndex = $newContent.Count - 1
+            }
+
+            # Find the end of the section
+            $endOfSectionIndex = $newContent.Count
+            for ($j = $sectionLineIndex + 1; $j -lt $newContent.Count; $j++) {
+                if ($newContent[$j].Trim().StartsWith("[")) {
+                    $endOfSectionIndex = $j
+                    break
+                }
+            }
+
+            $keyValueList.GetEnumerator() | ForEach-Object {
+                $key = $_.Key
+                $value = $_.Value
+                $keyFound = $false
+                # Search for the key within the section
+                for ($j = $sectionLineIndex + 1; $j -lt $endOfSectionIndex; $j++) {
+                    if ($newContent[$j].Trim() -match "^\s*$key\s*=") {
+                        # Preserve indentation if present
+                        $indent = $newContent[$j] -replace '(\s*).*', '$1'
+                        $newContent[$j] = "$indent$key=$value"
+                        $keyFound = $true
+                        break
+                    }
+                }
+
+                if (-not $keyFound) {
+                    # Key not found, insert it at the end of the section contents
+                    $newContent.Insert($endOfSectionIndex, "$key=$value")
+                    $endOfSectionIndex++
+                }
+            }
+
+            $newContent | Set-Content -Path $FilePath -Force
             return
         }
         catch {
-             Write-Host "Tentando acessar o arquivo $FilePath - Tentativa $i"
+             Write-Host "Tentando acessar o arquivo $FilePath - Tentativa $($i+1)/11..."
              Start-Sleep -s 2
         }
     }
-    throw "Não foi possível acessar ou modificar o arquivo $FilePath após 10 tentativas."
+    throw "ERRO: Não foi possível acessar ou modificar o arquivo $FilePath após 11 tentativas. O arquivo pode estar em uso ou corrompido."
 }
 
 # --- Ponto de Entrada do Script ---
