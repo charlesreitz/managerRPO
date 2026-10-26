@@ -80,10 +80,13 @@ function Get-IniContent ($filePath)
 }
 
 <#
-Tenta abrir o arquivo com lock exclusivo (FileShare.None).
-Retorna $true se conseguiu (e libera o handle imediatamente), $false se estiver em uso.
+Tenta abrir o arquivo para escrita compartilhando leitura/escrita (FileShare.ReadWrite).
+Não exige exclusividade: o appserver em execução mantém o .ini aberto e um lock exclusivo
+(FileShare.None) sempre falharia. Só retorna $false se outro processo bloquear a escrita
+(ex.: editor/antivírus abriu sem compartilhar escrita) ou o arquivo for somente leitura.
+Retorna $true se conseguiu (e libera o handle imediatamente).
 #>
-function Test-ExclusiveFileLock {
+function Test-FileWriteAccess {
     Param([Parameter(Mandatory=$true)][string]$FilePath)
 
     if (-not (Test-Path -LiteralPath $FilePath)) {
@@ -96,7 +99,7 @@ function Test-ExclusiveFileLock {
             $FilePath,
             [System.IO.FileMode]::Open,
             [System.IO.FileAccess]::ReadWrite,
-            [System.IO.FileShare]::None
+            [System.IO.FileShare]::ReadWrite
         )
         return $true
     }
@@ -112,10 +115,10 @@ function Test-ExclusiveFileLock {
 }
 
 <#
-Valida lock exclusivo em todos os appserver.ini que serão alterados.
-Falha cedo (antes de qualquer alteração no .ini) se algum arquivo estiver em uso.
+Valida acesso de escrita em todos os appserver.ini que serão alterados.
+Falha cedo (antes de qualquer alteração no .ini) se algum arquivo estiver com a escrita bloqueada.
 #>
-function Assert-AppserverIniExclusiveLock {
+function Assert-AppserverIniWriteAccess {
     Param(
         [Parameter(Mandatory=$true)][string[]]$IniFilePaths
     )
@@ -123,28 +126,73 @@ function Assert-AppserverIniExclusiveLock {
     $lockedFiles = @()
     foreach ($iniPath in $IniFilePaths) {
         if (-not (Test-Path -LiteralPath $iniPath)) {
-            Write-ManagerLog -Level WARN -Message "Arquivo .ini não encontrado na pré-validação de lock: $iniPath"
+            Write-ManagerLog -Level WARN -Message "Arquivo .ini não encontrado na pré-validação de escrita: $iniPath"
             continue
         }
-        Write-ManagerLog -Level INFO -Message "Testando lock exclusivo: $iniPath"
-        if (-not (Test-ExclusiveFileLock -FilePath $iniPath)) {
-            Write-ManagerLog -Level WARN -Message "Lock exclusivo negado (arquivo em uso): $iniPath"
+        Write-ManagerLog -Level INFO -Message "Testando acesso de escrita: $iniPath"
+        if (-not (Test-FileWriteAccess -FilePath $iniPath)) {
+            Write-ManagerLog -Level WARN -Message "Acesso de escrita negado: $iniPath"
             $lockedFiles += $iniPath
         }
         else {
-            Write-ManagerLog -Level SUCCESS -Message "Lock exclusivo OK: $iniPath"
+            Write-ManagerLog -Level SUCCESS -Message "Acesso de escrita OK: $iniPath"
         }
     }
 
     if ($lockedFiles.Count -gt 0) {
         $lista = ($lockedFiles | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
         throw @"
-Não foi possível obter lock exclusivo nos arquivos .ini abaixo (arquivo em uso por outro processo, ex.: appserver).
+Não foi possível obter acesso de escrita nos arquivos .ini abaixo (bloqueado por outro processo ou somente leitura).
 Nenhuma alteração foi iniciada nos .ini para evitar corrupção/arquivo em branco:
 $lista
 Feche o processo que está usando o(s) arquivo(s) e execute novamente.
 "@
     }
+}
+
+<#
+Localiza o .ini do appserver dentro da pasta informada.
+- Busca desativada: usa o nome fixo ($AppserverIniFile).
+- Busca ativada: procura appserver*.ini (cenário em que o appserver.exe foi renomeado e o .ini acompanha o nome).
+  Se encontrar 2 ou mais, descarta o appserver.ini; se ainda sobrar mais de um, é ambíguo e o appserver é pulado.
+Retorna o caminho completo do .ini ou $null se não encontrado.
+#>
+function Resolve-AppserverIniFile {
+    Param(
+        [Parameter(Mandatory=$true)][string]$AppserverPath,
+        [Parameter(Mandatory=$true)][string]$AppserverIniFile,
+        [bool]$SearchIni = $false
+    )
+
+    if (-not $SearchIni) {
+        $iniPath = "$AppserverPath\$AppserverIniFile"
+        if (Test-Path -LiteralPath $iniPath) { return $iniPath }
+        return $null
+    }
+
+    if (-not (Test-Path -LiteralPath $AppserverPath)) {
+        return $null
+    }
+
+    # Filtro do Windows com extensão de 3 caracteres também casa ".ini*" (ex.: .inibak); garante extensão exata
+    $candidates = @(Get-ChildItem -LiteralPath $AppserverPath -Filter "appserver*.ini" -File |
+        Where-Object { $_.Extension -eq '.ini' })
+
+    if ($candidates.Count -gt 1) {
+        Write-ManagerLog -Level INFO -Message "Busca appserver*.ini em '$AppserverPath' encontrou $($candidates.Count) arquivos: $(($candidates | ForEach-Object { $_.Name }) -join ', ') - descartando $AppserverIniFile."
+        $candidates = @($candidates | Where-Object { $_.Name -ne $AppserverIniFile })
+    }
+
+    if ($candidates.Count -eq 0) {
+        return $null
+    }
+    if ($candidates.Count -gt 1) {
+        Write-ManagerLog -Level WARN -Message "Busca appserver*.ini ambígua em '$AppserverPath': $(($candidates | ForEach-Object { $_.Name }) -join ', ') - pulando."
+        return $null
+    }
+
+    Write-ManagerLog -Level INFO -Message "Busca appserver*.ini em '$AppserverPath' selecionou: $($candidates[0].Name)"
+    return $candidates[0].FullName
 }
 
 <#
@@ -156,18 +204,19 @@ function Get-AppserverIniPathsToUpdate {
         [Parameter(Mandatory=$true)][string]$PathProtheus,
         [Parameter(Mandatory=$true)][string]$PathBinarios,
         [Parameter(Mandatory=$true)][string]$AppserverIniFile,
-        [string]$PathProtheusRemoto = ""
+        [string]$PathProtheusRemoto = "",
+        [bool]$SearchIni = $false
     )
 
     $paths = New-Object 'System.Collections.Generic.List[string]'
     foreach ($appserver in $Appservers) {
-        $localIni = "$PathProtheus$PathBinarios\$appserver\$AppserverIniFile"
-        if (Test-Path -LiteralPath $localIni) {
+        $localIni = Resolve-AppserverIniFile -AppserverPath "$PathProtheus$PathBinarios\$appserver" -AppserverIniFile $AppserverIniFile -SearchIni $SearchIni
+        if ($localIni) {
             $paths.Add($localIni)
         }
         if ($PathProtheusRemoto) {
-            $remoteIni = "$PathProtheusRemoto$PathBinarios\$appserver\$AppserverIniFile"
-            if (Test-Path -LiteralPath $remoteIni) {
+            $remoteIni = Resolve-AppserverIniFile -AppserverPath "$PathProtheusRemoto$PathBinarios\$appserver" -AppserverIniFile $AppserverIniFile -SearchIni $SearchIni
+            if ($remoteIni) {
                 $paths.Add($remoteIni)
             }
         }
@@ -200,10 +249,14 @@ $aEnvironments          = $iniContent["ambiente"]["Environment"].Split(',')
 $cEnvironment           = ($aEnvironments[0]).Trim()
 $cPathRPODefault        = $iniContent["ambiente"]["PathRPODefault"]
 $cPathRPOCustom         = $iniContent["ambiente"]["PathRPOCustom"]
+$lBuscaAppserverIni     = ($iniContent["ambiente"]["BuscaAppserverIni"] -eq "1")
 
 Write-ManagerLog -Level INFO -Message "Ambiente principal: $cEnvironment | Appservers: $($aAppservers -join ', ') | Environments: $($aEnvironments -join ', ')"
 if (-not $cPathProtheusRemoto) {
     Write-ManagerLog -Level WARN -Message "PathProtheusRemoto não configurado - atualização remota será ignorada."
+}
+if ($lBuscaAppserverIni) {
+    Write-ManagerLog -Level INFO -Message "BuscaAppserverIni ativo - o .ini de cada appserver será localizado por appserver*.ini."
 }
 
 #------------------------------------------------------------------
@@ -292,28 +345,30 @@ function ChangeRPOFile {
         $cIniValueLocal = if ($RpoType -eq 'custom') { $cCopiedRpoFileLocal } else { $cNewBackupFolderLocal }
         Write-ManagerLog -Level INFO -Message "Valor INI local ($cIniKeyToUpdate)=$cIniValueLocal"
 
-        # Pré-validação: lock exclusivo em TODOS os .ini antes de qualquer alteração
-        Write-ManagerLog -Level INFO -Message "Etapa: pré-validação de lock exclusivo nos .ini..."
+        # Pré-validação: acesso de escrita em TODOS os .ini antes de qualquer alteração
+        Write-ManagerLog -Level INFO -Message "Etapa: pré-validação de acesso de escrita nos .ini..."
         $iniPathsToUpdate = Get-AppserverIniPathsToUpdate `
             -Appservers $aAppservers `
             -PathProtheus $cPathProtheus `
             -PathBinarios $cPathBinarios `
             -AppserverIniFile $cAppserverIniFile `
-            -PathProtheusRemoto $cPathProtheusRemoto
+            -PathProtheusRemoto $cPathProtheusRemoto `
+            -SearchIni $lBuscaAppserverIni
         if ($iniPathsToUpdate.Count -eq 0) {
             throw "Nenhum arquivo $cAppserverIniFile encontrado para atualização nos appservers configurados."
         }
         Write-ManagerLog -Level INFO -Message "Arquivos .ini candidatos ($($iniPathsToUpdate.Count)): $($iniPathsToUpdate -join ' | ')"
-        Assert-AppserverIniExclusiveLock -IniFilePaths $iniPathsToUpdate
-        Write-ManagerLog -Level SUCCESS -Message "Pré-validação de lock concluída - seguindo para alteração dos .ini."
+        Assert-AppserverIniWriteAccess -IniFilePaths $iniPathsToUpdate
+        Write-ManagerLog -Level SUCCESS -Message "Pré-validação de escrita concluída - seguindo para alteração dos .ini."
 
         # Atualiza os arquivos .ini dos appservers locais
         Write-ManagerLog -Level INFO -Message "Etapa: atualização dos .ini locais..."
         $keyValueList = @{ $cIniKeyToUpdate = $cIniValueLocal }
         foreach ($appserver in $aAppservers) {
-            $cIniFile = "$cPathProtheus$cPathBinarios\$appserver\$cAppserverIniFile"
-            if (Test-Path $cIniFile) {
-                $cIniFileBak = "$cPathProtheus$cPathBinarios\$appserver\$($cAppserverNameFile)_$cRPONewFolderTimestamp.bak"
+            $cAppserverPath = "$cPathProtheus$cPathBinarios\$appserver"
+            $cIniFile = Resolve-AppserverIniFile -AppserverPath $cAppserverPath -AppserverIniFile $cAppserverIniFile -SearchIni $lBuscaAppserverIni
+            if ($cIniFile) {
+                $cIniFileBak = "$cAppserverPath\$([System.IO.Path]::GetFileNameWithoutExtension($cIniFile))_$cRPONewFolderTimestamp.bak"
                 Write-ManagerLog -Level INFO -Message "Appserver local '$appserver' | INI=$cIniFile"
                 Write-ManagerLog -Level INFO -Message "Gerando backup: $cIniFileBak"
                 Copy-Item $cIniFile $cIniFileBak -Force
@@ -327,7 +382,7 @@ function ChangeRPOFile {
                 }
             }
             else {
-                Write-ManagerLog -Level WARN -Message "appserver.ini local não encontrado para '$appserver': $cIniFile - pulando."
+                Write-ManagerLog -Level WARN -Message "appserver.ini local não encontrado para '$appserver' em $cAppserverPath - pulando."
             }
         }
 
@@ -350,9 +405,10 @@ function ChangeRPOFile {
             Write-ManagerLog -Level INFO -Message "Etapa: atualização dos .ini remotos..."
             $keyValueListRemoto = @{ $cIniKeyToUpdate = $cIniValueRemoto }
             foreach ($appserver in $aAppservers) {
-                $cIniFileRemoto = "$cPathProtheusRemoto$cPathBinarios\$appserver\$cAppserverIniFile"
-                if (Test-Path $cIniFileRemoto) {
-                    $cIniFileBakRemoto = "$cPathProtheusRemoto$cPathBinarios\$appserver\$($cAppserverNameFile)_$cRPONewFolderTimestamp.bak"
+                $cAppserverPathRemoto = "$cPathProtheusRemoto$cPathBinarios\$appserver"
+                $cIniFileRemoto = Resolve-AppserverIniFile -AppserverPath $cAppserverPathRemoto -AppserverIniFile $cAppserverIniFile -SearchIni $lBuscaAppserverIni
+                if ($cIniFileRemoto) {
+                    $cIniFileBakRemoto = "$cAppserverPathRemoto\$([System.IO.Path]::GetFileNameWithoutExtension($cIniFileRemoto))_$cRPONewFolderTimestamp.bak"
                     Write-ManagerLog -Level INFO -Message "Appserver remoto '$appserver' | INI=$cIniFileRemoto"
                     Write-ManagerLog -Level INFO -Message "Gerando backup remoto: $cIniFileBakRemoto"
                     Copy-Item $cIniFileRemoto $cIniFileBakRemoto -Force
@@ -366,7 +422,7 @@ function ChangeRPOFile {
                     }
                 }
                 else {
-                    Write-ManagerLog -Level WARN -Message "appserver.ini remoto não encontrado para '$appserver': $cIniFileRemoto - pulando."
+                    Write-ManagerLog -Level WARN -Message "appserver.ini remoto não encontrado para '$appserver' em $cAppserverPathRemoto - pulando."
                 }
             }
         }
@@ -391,7 +447,65 @@ function ChangeRPOFile {
 }
 
 <#
-Grava o conteúdo no destino via arquivo temporário + substituição.
+Grava os bytes no próprio arquivo, compartilhando leitura/escrita com o appserver que o mantém aberto.
+Não trunca antes de gravar: sobrescreve a partir do início e só depois ajusta o tamanho (SetLength),
+evitando a janela de arquivo em branco do Set-Content. Ao final relê e confere o conteúdo;
+se falhar ou divergir, regrava o conteúdo original.
+#>
+function Write-FileBytesInPlace {
+    Param(
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [Parameter(Mandatory=$true)][byte[]]$Bytes
+    )
+
+    $originalBytes = [System.IO.File]::ReadAllBytes($FilePath)
+    if ($originalBytes.Length -le 0) {
+        throw "Abortado: arquivo original lido vazio antes da gravação in-place: $FilePath"
+    }
+
+    $writeBytes = {
+        Param([byte[]]$Data)
+        $stream = [System.IO.File]::Open(
+            $FilePath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::ReadWrite
+        )
+        try {
+            $stream.Position = 0
+            $stream.Write($Data, 0, $Data.Length)
+            $stream.SetLength($Data.Length)
+            $stream.Flush($true)
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+
+    try {
+        & $writeBytes $Bytes
+        $checkBytes = [System.IO.File]::ReadAllBytes($FilePath)
+        if ([System.Convert]::ToBase64String($checkBytes) -ne [System.Convert]::ToBase64String($Bytes)) {
+            throw "Conteúdo gravado diverge do esperado: $FilePath"
+        }
+    }
+    catch {
+        $writeError = $_.Exception.Message
+        Write-ManagerLog -Level WARN -Message "Falha na gravação in-place ($writeError) - restaurando conteúdo original: $FilePath"
+        try {
+            & $writeBytes $originalBytes
+        }
+        catch {
+            throw "Falha na gravação in-place e na restauração do conteúdo original. Restaure o .bak manualmente: $FilePath | $writeError | $($_.Exception.Message)"
+        }
+        throw "Falha na gravação in-place (conteúdo original restaurado): $FilePath | $writeError"
+    }
+}
+
+<#
+Grava o conteúdo no destino via arquivo temporário + substituição atômica (File.Replace).
+Se a troca atômica não for possível porque o appserver mantém o .ini aberto (sem compartilhar exclusão),
+faz fallback para gravação in-place segura (Write-FileBytesInPlace).
 Evita Set-Content in-place, que trunca o arquivo antes de gravar e pode deixá-lo em branco.
 Importante: NÃO usar parâmetro nomeado "Content" com List[string] — o binder do PowerShell
 falha com linhas em branco do .ini ("Cannot bind ... empty string").
@@ -423,9 +537,9 @@ function Write-IniContentSafe {
     $encoding = [System.Text.Encoding]::Default
 
     try {
-        # Garante que ninguém está segurando o destino antes da troca
-        if (-not (Test-ExclusiveFileLock -FilePath $FilePath)) {
-            throw "Arquivo em uso no momento da gravação (sem lock exclusivo): $FilePath"
+        # Garante que a escrita no destino não está bloqueada antes da troca
+        if (-not (Test-FileWriteAccess -FilePath $FilePath)) {
+            throw "Arquivo com escrita bloqueada no momento da gravação: $FilePath"
         }
 
         [System.IO.File]::WriteAllLines($tempPath, $normalizedLines, $encoding)
@@ -435,10 +549,20 @@ function Write-IniContentSafe {
             throw "Abortado: arquivo temporário ficou vazio ao gravar: $tempPath"
         }
 
-        # File.Replace com $null no PowerShell vira "" e quebra; usa backup temporário e remove em seguida
-        [System.IO.File]::Replace($tempPath, $FilePath, $backupPath)
-        if (Test-Path -LiteralPath $backupPath) {
-            Remove-Item -LiteralPath $backupPath -Force -ErrorAction SilentlyContinue
+        try {
+            # File.Replace com $null no PowerShell vira "" e quebra; usa backup temporário e remove em seguida
+            [System.IO.File]::Replace($tempPath, $FilePath, $backupPath)
+        }
+        catch {
+            Write-ManagerLog -Level WARN -Message "Troca atômica indisponível (arquivo aberto por outro processo) - usando gravação in-place: $($_.Exception.Message)"
+            # ReplaceFile pode falhar após renomear o original para o backup; devolve o original antes de seguir
+            if (-not (Test-Path -LiteralPath $FilePath) -and (Test-Path -LiteralPath $backupPath)) {
+                Move-Item -LiteralPath $backupPath -Destination $FilePath -Force
+            }
+            if (-not (Test-Path -LiteralPath $FilePath)) {
+                throw "Arquivo original ausente após falha na troca atômica. Restaure o .bak manualmente: $FilePath"
+            }
+            Write-FileBytesInPlace -FilePath $FilePath -Bytes ([System.IO.File]::ReadAllBytes($tempPath))
         }
     }
     finally {
@@ -454,7 +578,7 @@ function Write-IniContentSafe {
 <#
 Função responsável por localizar e setar os valores no ini, dentro de uma seção específica.
 Só altera se a seção (ambiente) já existir no arquivo; caso contrário, ignora sem criar seção.
-Usa lock exclusivo e gravação segura (sem Set-Content in-place) para evitar .ini em branco.
+Valida acesso de escrita e usa gravação segura (sem Set-Content in-place) para evitar .ini em branco.
 #> 
 function Set-OrAddIniValue {
     Param(
@@ -465,8 +589,8 @@ function Set-OrAddIniValue {
 
     For ($i=0; $i -le 10; $i++) {
         try {
-            if (-not (Test-ExclusiveFileLock -FilePath $FilePath)) {
-                throw "Arquivo em uso (sem lock exclusivo): $FilePath"
+            if (-not (Test-FileWriteAccess -FilePath $FilePath)) {
+                throw "Arquivo com escrita bloqueada: $FilePath"
             }
 
             $fileInfo = Get-Item -LiteralPath $FilePath
