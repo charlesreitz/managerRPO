@@ -12,7 +12,10 @@ PS: gentileza não remover as credencias de criação, seja gentil.
 Param(
     [Parameter(Mandatory=$true, HelpMessage="Especifique o tipo de RPO: 'default' ou 'custom'")]
     [ValidateSet('default', 'custom')]
-    [string]$RpoType
+    [string]$RpoType,
+
+    # Uso interno: indica que o script foi relançado com privilégio de administrador (evita loop de elevação)
+    [switch]$Elevated
 )
 
 $ErrorActionPreference = 'Stop' 
@@ -80,74 +83,194 @@ function Get-IniContent ($filePath)
 }
 
 <#
-Tenta abrir o arquivo para escrita compartilhando leitura/escrita (FileShare.ReadWrite).
-Não exige exclusividade: o appserver em execução mantém o .ini aberto e um lock exclusivo
-(FileShare.None) sempre falharia. Só retorna $false se outro processo bloquear a escrita
-(ex.: editor/antivírus abriu sem compartilhar escrita) ou o arquivo for somente leitura.
-Retorna $true se conseguiu (e libera o handle imediatamente).
+Retorna $true se o processo atual está rodando com privilégio de administrador (token elevado).
+Com UAC ativo, um usuário do grupo Administradores sem elevação retorna $false.
 #>
-function Test-FileWriteAccess {
-    Param([Parameter(Mandatory=$true)][string]$FilePath)
+function Test-IsAdmin {
+    $principal = New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())
+    return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
 
-    if (-not (Test-Path -LiteralPath $FilePath)) {
-        return $false
+<#
+Classifica a exceção de acesso a arquivo/pasta:
+Denied (sem permissão - elevação pode resolver), Missing, Locked (em uso por outro processo) ou Error.
+#>
+function Get-AccessErrorStatus {
+    Param([Parameter(Mandatory=$true)]$ErrorRecord)
+
+    $ex = $ErrorRecord.Exception
+    while ($null -ne $ex) {
+        if ($ex -is [System.UnauthorizedAccessException] -or $ex -is [System.Security.SecurityException]) { return 'Denied' }
+        if ($ex -is [System.IO.FileNotFoundException] -or $ex -is [System.IO.DirectoryNotFoundException]) { return 'Missing' }
+        if ($ex -is [System.IO.IOException]) { return 'Locked' }
+        $ex = $ex.InnerException
+    }
+    return 'Error'
+}
+
+<#
+Testa acesso a um arquivo (Read ou Write) compartilhando leitura/escrita (FileShare.ReadWrite).
+Não exige exclusividade: o appserver em execução mantém o .ini aberto e um lock exclusivo
+(FileShare.None) sempre falharia.
+Retorna: OK, Missing, ReadOnly, Denied, Locked ou Error (e libera o handle imediatamente).
+#>
+function Get-FileAccessStatus {
+    Param(
+        [Parameter(Mandatory=$true)][string]$FilePath,
+        [ValidateSet('Read','Write')][string]$Access = 'Write'
+    )
+
+    if (-not (Test-Path -LiteralPath $FilePath -PathType Leaf)) {
+        return 'Missing'
+    }
+    if ($Access -eq 'Write' -and (Get-Item -LiteralPath $FilePath -Force).IsReadOnly) {
+        return 'ReadOnly'
     }
 
+    $fileAccess = if ($Access -eq 'Write') { [System.IO.FileAccess]::ReadWrite } else { [System.IO.FileAccess]::Read }
     $stream = $null
     try {
         $stream = [System.IO.File]::Open(
             $FilePath,
             [System.IO.FileMode]::Open,
-            [System.IO.FileAccess]::ReadWrite,
+            $fileAccess,
             [System.IO.FileShare]::ReadWrite
         )
-        return $true
+        return 'OK'
     }
     catch {
-        return $false
+        return (Get-AccessErrorStatus -ErrorRecord $_)
     }
     finally {
         if ($null -ne $stream) {
-            $stream.Close()
             $stream.Dispose()
         }
     }
 }
 
 <#
-Valida acesso de escrita em todos os appserver.ini que serão alterados.
-Falha cedo (antes de qualquer alteração no .ini) se algum arquivo estiver com a escrita bloqueada.
+Atalho booleano: $true se o arquivo pode ser aberto para escrita agora.
 #>
-function Assert-AppserverIniWriteAccess {
-    Param(
-        [Parameter(Mandatory=$true)][string[]]$IniFilePaths
-    )
+function Test-FileWriteAccess {
+    Param([Parameter(Mandatory=$true)][string]$FilePath)
+    return ((Get-FileAccessStatus -FilePath $FilePath -Access Write) -eq 'OK')
+}
 
-    $lockedFiles = @()
-    foreach ($iniPath in $IniFilePaths) {
-        if (-not (Test-Path -LiteralPath $iniPath)) {
-            Write-ManagerLog -Level WARN -Message "Arquivo .ini não encontrado na pré-validação de escrita: $iniPath"
-            continue
+<#
+Testa se é possível criar arquivo e subpasta dentro da pasta (cópia do RPO via robocopy,
+backup .bak e arquivo temporário do .ini). Os itens de teste são removidos em seguida.
+Retorna: OK, Missing, Denied, Locked ou Error.
+#>
+function Get-FolderWriteStatus {
+    Param([Parameter(Mandatory=$true)][string]$FolderPath)
+
+    if (-not (Test-Path -LiteralPath $FolderPath -PathType Container)) {
+        return 'Missing'
+    }
+
+    $probeName = ".managerRPO_perm_$([guid]::NewGuid().ToString('N'))"
+    $probeFile = Join-Path $FolderPath "$probeName.tmp"
+    $probeDir  = Join-Path $FolderPath $probeName
+    $stream = $null
+    try {
+        # DeleteOnClose: o arquivo de teste some ao liberar o handle
+        $stream = New-Object System.IO.FileStream(
+            $probeFile,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None,
+            1,
+            [System.IO.FileOptions]::DeleteOnClose
+        )
+        $stream.Dispose()
+        $stream = $null
+
+        [void][System.IO.Directory]::CreateDirectory($probeDir)
+        [System.IO.Directory]::Delete($probeDir)
+        return 'OK'
+    }
+    catch {
+        return (Get-AccessErrorStatus -ErrorRecord $_)
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        if (Test-Path -LiteralPath $probeDir) {
+            Remove-Item -LiteralPath $probeDir -Force -ErrorAction SilentlyContinue
         }
-        Write-ManagerLog -Level INFO -Message "Testando acesso de escrita: $iniPath"
-        if (-not (Test-FileWriteAccess -FilePath $iniPath)) {
-            Write-ManagerLog -Level WARN -Message "Acesso de escrita negado: $iniPath"
-            $lockedFiles += $iniPath
+    }
+}
+
+<#
+Executa todas as checagens de permissão antes de qualquer alteração.
+$Checks: lista de @{ Type = 'FileRead' | 'FileWrite' | 'FolderWrite'; Path = '...' }
+Retorna @{ Denied = [itens sem permissão]; Problems = [itens com outros problemas (em uso, somente leitura, ...)] }
+#>
+function Test-RequiredPermissions {
+    Param([Parameter(Mandatory=$true)][object[]]$Checks)
+
+    $denied   = New-Object 'System.Collections.Generic.List[string]'
+    $problems = New-Object 'System.Collections.Generic.List[string]'
+    $seen     = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($check in $Checks) {
+        if (-not $seen.Add("$($check.Type)|$($check.Path)")) { continue }
+
+        $status = switch ($check.Type) {
+            'FileRead'    { Get-FileAccessStatus -FilePath $check.Path -Access Read }
+            'FileWrite'   { Get-FileAccessStatus -FilePath $check.Path -Access Write }
+            'FolderWrite' { Get-FolderWriteStatus -FolderPath $check.Path }
         }
-        else {
-            Write-ManagerLog -Level SUCCESS -Message "Acesso de escrita OK: $iniPath"
+        $label = "[$($check.Type)] $($check.Path)"
+
+        switch ($status) {
+            'OK'       { Write-ManagerLog -Level SUCCESS -Message "Permissão OK: $label" }
+            'Denied'   { Write-ManagerLog -Level WARN -Message "Sem permissão: $label"; $denied.Add($label) }
+            'Locked'   { Write-ManagerLog -Level WARN -Message "Em uso por outro processo (sem compartilhar escrita): $label"; $problems.Add("$label (em uso por outro processo)") }
+            'ReadOnly' { Write-ManagerLog -Level WARN -Message "Arquivo marcado como somente leitura: $label"; $problems.Add("$label (atributo somente leitura)") }
+            'Missing'  { Write-ManagerLog -Level WARN -Message "Não encontrado: $label"; $problems.Add("$label (não encontrado)") }
+            default    { Write-ManagerLog -Level WARN -Message "Falha ao testar acesso: $label"; $problems.Add("$label (falha ao testar acesso)") }
         }
     }
 
-    if ($lockedFiles.Count -gt 0) {
-        $lista = ($lockedFiles | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
-        throw @"
-Não foi possível obter acesso de escrita nos arquivos .ini abaixo (bloqueado por outro processo ou somente leitura).
-Nenhuma alteração foi iniciada nos .ini para evitar corrupção/arquivo em branco:
-$lista
-Feche o processo que está usando o(s) arquivo(s) e execute novamente.
-"@
+    return @{ Denied = $denied.ToArray(); Problems = $problems.ToArray() }
+}
+
+<#
+Relança este script com privilégio de administrador (UAC) e aguarda o término.
+Mantém o diretório de trabalho atual (log) e o -RpoType. Retorna o exit code do processo elevado.
+#>
+function Invoke-SelfElevated {
+    $quote = { Param([string]$s) "'" + ($s -replace "'", "''") + "'" }
+
+    # Unidades de rede mapeadas podem não estar visíveis na sessão elevada (prefira caminho UNC no managerRPO.ini)
+    foreach ($p in @($cPathProtheus, $cPathProtheusRemoto)) {
+        if ($p -and $p -match '^[A-Za-z]:') {
+            try {
+                if ((New-Object System.IO.DriveInfo($p.Substring(0, 1))).DriveType -eq 'Network') {
+                    Write-ManagerLog -Level WARN -Message "Caminho '$p' usa unidade de rede mapeada - pode não estar acessível como administrador. Prefira caminho UNC (\\servidor\compartilhamento)."
+                }
+            } catch { }
+        }
     }
+
+    $workDir = (Get-Location).ProviderPath
+    $command = "Set-Location -LiteralPath $(& $quote $workDir); & $(& $quote $PSCommandPath) -RpoType $(& $quote $RpoType) -Elevated; exit `$LASTEXITCODE"
+    $encoded = [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+    $psExe   = (Get-Process -Id $PID).Path
+
+    Write-ManagerLog -Level INFO -Message "Solicitando permissão de administrador (UAC) para continuar..."
+    try {
+        $proc = Start-Process -FilePath $psExe `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded" `
+            -Verb RunAs -Wait -PassThru
+    }
+    catch {
+        Write-ManagerLog -Level ERROR -Message "Elevação cancelada ou não permitida: $($_.Exception.Message)"
+        return 1
+    }
+
+    Write-ManagerLog -Level INFO -Message "Execução como administrador finalizada com exit code $($proc.ExitCode) (detalhes acima em managerRPO.log)."
+    return $proc.ExitCode
 }
 
 <#
@@ -326,6 +449,56 @@ function ChangeRPOFile {
             Write-ManagerLog -Level SUCCESS -Message "Pasta de destino remoto OK."
         }
 
+        # Pré-validação: permissões em TODAS as pastas e arquivos antes de qualquer alteração
+        Write-ManagerLog -Level INFO -Message "Etapa: pré-validação de permissões em pastas e arquivos..."
+        $iniPathsToUpdate = Get-AppserverIniPathsToUpdate `
+            -Appservers $aAppservers `
+            -PathProtheus $cPathProtheus `
+            -PathBinarios $cPathBinarios `
+            -AppserverIniFile $cAppserverIniFile `
+            -PathProtheusRemoto $cPathProtheusRemoto `
+            -SearchIni $lBuscaAppserverIni
+        if ($iniPathsToUpdate.Count -eq 0) {
+            throw "Nenhum arquivo $cAppserverIniFile encontrado para atualização nos appservers configurados."
+        }
+        Write-ManagerLog -Level INFO -Message "Arquivos .ini candidatos ($($iniPathsToUpdate.Count)): $($iniPathsToUpdate -join ' | ')"
+
+        $permChecks = New-Object 'System.Collections.Generic.List[object]'
+        $permChecks.Add(@{ Type = 'FileRead';    Path = $cRPOOrigFile })
+        $permChecks.Add(@{ Type = 'FolderWrite'; Path = $cRPODestPath })
+        if ($cPathProtheusRemoto) {
+            $permChecks.Add(@{ Type = 'FolderWrite'; Path = $cRPODestPathRemoto })
+        }
+        foreach ($iniPath in $iniPathsToUpdate) {
+            # Pasta do appserver: backup .bak e arquivo temporário da gravação do .ini
+            $permChecks.Add(@{ Type = 'FolderWrite'; Path = (Split-Path -Parent $iniPath) })
+            $permChecks.Add(@{ Type = 'FileWrite';   Path = $iniPath })
+        }
+
+        $perm = Test-RequiredPermissions -Checks $permChecks.ToArray()
+        if ($perm.Denied.Count -gt 0) {
+            $lista = ($perm.Denied | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+            if (-not (Test-IsAdmin)) {
+                Write-ManagerLog -Level WARN -Message "Sem permissão em $($perm.Denied.Count) item(ns) - nenhuma alteração foi feita. Será solicitada execução como administrador."
+                $script:ElevationRequired = $true
+                return $false
+            }
+            throw @"
+Sem permissão nos itens abaixo, mesmo executando como administrador. Nenhuma alteração foi feita:
+$lista
+Verifique as permissões (NTFS/compartilhamento) e execute novamente.
+"@
+        }
+        if ($perm.Problems.Count -gt 0) {
+            $lista = ($perm.Problems | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+            throw @"
+Não foi possível validar o acesso aos itens abaixo. Nenhuma alteração foi feita para evitar corrupção/arquivo em branco:
+$lista
+Corrija o(s) item(ns) (feche o processo que está usando, remova o atributo somente leitura, etc.) e execute novamente.
+"@
+        }
+        Write-ManagerLog -Level SUCCESS -Message "Pré-validação de permissões concluída - seguindo para as alterações."
+
         # Cria a nova pasta de backup com timestamp
         $cRPONewFolderTimestamp = (Get-Date).ToString("yyyyMMddHHmmss")
         $cNewBackupFolderLocal = $cRPODestPath + "\" + $cRPONewFolderTimestamp
@@ -344,22 +517,6 @@ function ChangeRPOFile {
         # Define o valor a ser atualizado no INI
         $cIniValueLocal = if ($RpoType -eq 'custom') { $cCopiedRpoFileLocal } else { $cNewBackupFolderLocal }
         Write-ManagerLog -Level INFO -Message "Valor INI local ($cIniKeyToUpdate)=$cIniValueLocal"
-
-        # Pré-validação: acesso de escrita em TODOS os .ini antes de qualquer alteração
-        Write-ManagerLog -Level INFO -Message "Etapa: pré-validação de acesso de escrita nos .ini..."
-        $iniPathsToUpdate = Get-AppserverIniPathsToUpdate `
-            -Appservers $aAppservers `
-            -PathProtheus $cPathProtheus `
-            -PathBinarios $cPathBinarios `
-            -AppserverIniFile $cAppserverIniFile `
-            -PathProtheusRemoto $cPathProtheusRemoto `
-            -SearchIni $lBuscaAppserverIni
-        if ($iniPathsToUpdate.Count -eq 0) {
-            throw "Nenhum arquivo $cAppserverIniFile encontrado para atualização nos appservers configurados."
-        }
-        Write-ManagerLog -Level INFO -Message "Arquivos .ini candidatos ($($iniPathsToUpdate.Count)): $($iniPathsToUpdate -join ' | ')"
-        Assert-AppserverIniWriteAccess -IniFilePaths $iniPathsToUpdate
-        Write-ManagerLog -Level SUCCESS -Message "Pré-validação de escrita concluída - seguindo para alteração dos .ini."
 
         # Atualiza os arquivos .ini dos appservers locais
         Write-ManagerLog -Level INFO -Message "Etapa: atualização dos .ini locais..."
@@ -434,11 +591,11 @@ function ChangeRPOFile {
     } catch {
         Write-ManagerLog -Level ERROR -Message "Ocorreu um erro: $($_.Exception.Message)"
         Write-ManagerLog -Level INFO -Message "========== Fim da troca de RPO (FALHA) =========="
-        Break
     }
     Finally {
         $Time=Get-Date
-        $statusMsg = "$Time | User:$env:USERNAME | Tipo:$($RpoType.ToUpper()) | Status:$(if($lReturn){'Sucesso'}else{'Falha'})"
+        $status = if ($lReturn) { 'Sucesso' } elseif ($script:ElevationRequired) { 'Elevação solicitada' } else { 'Falha' }
+        $statusMsg = "$Time | User:$env:USERNAME | Admin:$(Test-IsAdmin) | Tipo:$($RpoType.ToUpper()) | Status:$status"
         $statusMsg | Out-File $script:logfile -Append
         Write-ManagerLog -Level INFO -Message "Resumo gravado em log: $statusMsg"
     }
@@ -673,12 +830,28 @@ function Set-OrAddIniValue {
 
 # --- Ponto de Entrada do Script ---
 
-Write-ManagerLog -Level INFO -Message "Invocando ChangeRPOFile..."
+function Exit-Script {
+    Param([int]$Code)
+    # Na janela elevada (aberta pelo UAC), aguarda o usuário para não fechar sem mostrar o resultado
+    if ($Elevated) {
+        Read-Host "Pressione Enter para fechar esta janela" | Out-Null
+    }
+    exit $Code
+}
+
+$script:ElevationRequired = $false
+Write-ManagerLog -Level INFO -Message "Invocando ChangeRPOFile... (administrador: $(Test-IsAdmin))"
 $success = ChangeRPOFile
+
+if ($script:ElevationRequired) {
+    $elevatedExitCode = Invoke-SelfElevated
+    exit $elevatedExitCode
+}
+
 if ($success) {
     Write-ManagerLog -Level SUCCESS -Message "Script finalizado com exit code 0."
-    exit 0 # Sucesso
+    Exit-Script 0 # Sucesso
 } else {
     Write-ManagerLog -Level ERROR -Message "Script finalizado com exit code 1."
-    exit 1 # Falha
+    Exit-Script 1 # Falha
 }
