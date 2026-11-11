@@ -15,7 +15,10 @@ Param(
     [string]$RpoType,
 
     # Uso interno: indica que o script foi relançado com privilégio de administrador (evita loop de elevação)
-    [switch]$Elevated
+    [switch]$Elevated,
+
+    # Uso interno: caminho absoluto do log repassado ao processo elevado (que inicia em System32)
+    [string]$LogFile
 )
 
 $ErrorActionPreference = 'Stop' 
@@ -236,6 +239,24 @@ function Test-RequiredPermissions {
 }
 
 <#
+Converte caminho em unidade de rede mapeada (ex.: Z:\pasta) para UNC (\\servidor\share\pasta).
+Caminhos locais ou já UNC são retornados sem alteração.
+#>
+function ConvertTo-UncPath {
+    Param([string]$Path)
+
+    if ($Path -notmatch '^([A-Za-z]):(.*)$') { return $Path }
+    $rest = $Matches[2]
+    try {
+        $root = (Get-PSDrive -Name $Matches[1] -PSProvider FileSystem -ErrorAction Stop).DisplayRoot
+        if ($root -and $root.StartsWith('\\')) {
+            return $root.TrimEnd('\') + $rest
+        }
+    } catch { }
+    return $Path
+}
+
+<#
 Relança este script com privilégio de administrador (UAC) e aguarda o término.
 Mantém o diretório de trabalho atual (log) e o -RpoType. Retorna o exit code do processo elevado.
 #>
@@ -253,8 +274,15 @@ function Invoke-SelfElevated {
         }
     }
 
-    $workDir = (Get-Location).ProviderPath
-    $command = "Set-Location -LiteralPath $(& $quote $workDir); & $(& $quote $PSCommandPath) -RpoType $(& $quote $RpoType) -Elevated; exit `$LASTEXITCODE"
+    # A sessão elevada inicia em System32 e pode não enxergar unidades mapeadas:
+    # repassa pasta de trabalho, script e log como caminhos absolutos (UNC quando for unidade de rede)
+    $workDir    = ConvertTo-UncPath (Get-Location).ProviderPath
+    $scriptFile = ConvertTo-UncPath $PSCommandPath
+    $logPath    = ConvertTo-UncPath $script:logfile
+    Write-ManagerLog -Level INFO -Message "Execução elevada usará pasta de trabalho '$workDir' e log '$logPath'."
+
+    $command = "try { Set-Location -LiteralPath $(& $quote $workDir) -ErrorAction Stop } catch { }; " +
+               "& $(& $quote $scriptFile) -RpoType $(& $quote $RpoType) -Elevated -LogFile $(& $quote $logPath); exit `$LASTEXITCODE"
     $encoded = [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
     $psExe   = (Get-Process -Id $PID).Path
 
@@ -353,8 +381,9 @@ function Get-AppserverIniPathsToUpdate {
 #EFETUAR ALTERACAO DAS VARIAVEIS CONFORME NECESSIDAE DO AMBIENTE
 #------------------------------------------------------------------
 $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition      ##Busca o local de onde esta sendo executado o script
-$cGetPath           = Get-Location
-$script:logfile     = "$cGetPath\managerRPO.log"
+$cGetPath           = (Get-Location).ProviderPath
+# No processo elevado o log vem por parâmetro, para continuar na pasta de execução original (e não em System32)
+$script:logfile     = if ($LogFile) { $LogFile } else { Join-Path $cGetPath "managerRPO.log" }
 
 Write-ManagerLog -Level INFO -Message "Carregando configurações: $scriptPath\managerRPO.ini"
 $iniContent = Get-IniContent $scriptPath"\managerRPO.ini"               ##Carrega configuracoes do arquivo ini para atribuir as variaveis
@@ -596,7 +625,7 @@ Corrija o(s) item(ns) (feche o processo que está usando, remova o atributo some
         $Time=Get-Date
         $status = if ($lReturn) { 'Sucesso' } elseif ($script:ElevationRequired) { 'Elevação solicitada' } else { 'Falha' }
         $statusMsg = "$Time | User:$env:USERNAME | Admin:$(Test-IsAdmin) | Tipo:$($RpoType.ToUpper()) | Status:$status"
-        $statusMsg | Out-File $script:logfile -Append
+        $statusMsg | Out-File $script:logfile -Append -Encoding Default
         Write-ManagerLog -Level INFO -Message "Resumo gravado em log: $statusMsg"
     }
     
